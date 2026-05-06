@@ -1,0 +1,17 @@
+{
+  "name": "domino-kurdish-pro-rules-v3",
+  "version": "3.0.0",
+  "description": "Kurdish Domino Pro Rules - online multiplayer with MongoDB fallback",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2",
+    "mongoose": "^8.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
