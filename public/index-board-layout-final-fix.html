@@ -1,0 +1,1055 @@
+<!doctype html>
+<html lang="ckb" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>دۆمینۆی کوردی Pro - Table Layout</title>
+<script src="/socket.io/socket.io.js"></script>
+<style>
+*{box-sizing:border-box}
+body{
+  margin:0;
+  background:#120b18;
+  color:#fff;
+  font-family:Tahoma,Arial,sans-serif;
+  overflow-x:hidden;
+}
+.app{
+  max-width:560px;
+  margin:auto;
+  min-height:100vh;
+  background:radial-gradient(circle at top,#35214b,#140d1d 65%);
+  padding:12px;
+}
+.screen{display:none}
+.screen.active{display:block}
+
+.top{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:8px;
+  background:#4a2a19;
+  border:3px solid #9b6a38;
+  border-radius:18px;
+  padding:10px;
+  box-shadow:0 8px 25px #0008;
+}
+.card{
+  background:#0008;
+  border:1px solid #ffffff33;
+  border-radius:18px;
+  padding:14px;
+  margin:12px 0;
+}
+button,input,select{
+  width:100%;
+  padding:13px;
+  margin:7px 0;
+  border:0;
+  border-radius:14px;
+  font-weight:900;
+  font-size:15px;
+}
+button{
+  background:linear-gradient(135deg,#f7d774,#b7791f);
+  color:#16100a;
+}
+.blue{background:linear-gradient(135deg,#22d3ee,#3b82f6);color:#fff}
+.dark{background:#222;color:#fff}
+.danger{background:#dc2626;color:#fff}
+.green{background:linear-gradient(135deg,#22c55e,#15803d);color:#fff}
+
+.table-wrap{
+  position:relative;
+  width:100%;
+  min-height:520px;
+  background:
+    radial-gradient(circle at center,#16a064 0%,#0c7b46 55%,#064b2c 100%);
+  border:12px solid #6b3c22;
+  border-radius:42px;
+  box-shadow:
+    inset 0 0 80px rgba(0,0,0,.45),
+    0 18px 45px rgba(0,0,0,.45);
+  overflow:hidden;
+  padding:16px;
+}
+.table-wrap:before{
+  content:"";
+  position:absolute;
+  inset:8px;
+  border-radius:32px;
+  border:2px solid rgba(255,255,255,.12);
+  pointer-events:none;
+}
+.table-top-info{
+  position:absolute;
+  top:14px;
+  left:16px;
+  right:16px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  z-index:3;
+  pointer-events:none;
+}
+.info-pill{
+  background:rgba(0,0,0,.45);
+  border:1px solid rgba(255,255,255,.18);
+  border-radius:999px;
+  padding:7px 10px;
+  font-size:12px;
+  font-weight:900;
+}
+.scorebar{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+  margin:10px 0;
+}
+.scorebox{
+  background:#0b1f14;
+  border:1px solid #ffffff33;
+  border-radius:14px;
+  padding:10px;
+  text-align:center;
+}
+
+/* New domino board layout like the sent image */
+.domino-board{
+  position:absolute;
+  inset:58px 14px 125px 14px;
+  display:grid;
+  grid-template-columns:1fr auto 1fr;
+  grid-template-rows:1fr auto 1fr;
+  align-items:center;
+  justify-items:center;
+}
+.center-tile{
+  grid-column:2;
+  grid-row:2;
+  display:grid;
+  place-items:center;
+  z-index:5;
+}
+.branch{
+  display:flex;
+  gap:4px;
+  align-items:center;
+  justify-content:center;
+  z-index:4;
+}
+.branch.horizontal{flex-direction:row}
+.branch.vertical{flex-direction:column}
+#leftBranch{grid-column:1;grid-row:2;justify-self:end}
+#rightBranch{grid-column:3;grid-row:2;justify-self:start}
+#topBranch{grid-column:2;grid-row:1;align-self:end}
+#bottomBranch{grid-column:2;grid-row:3;align-self:start}
+
+.players{
+  position:absolute;
+  left:10px;
+  right:10px;
+  bottom:12px;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+  z-index:5;
+}
+.player{
+  background:rgba(0,0,0,.45);
+  border:1px solid rgba(255,255,255,.18);
+  border-radius:15px;
+  padding:8px;
+  text-align:center;
+  font-size:12px;
+}
+.player b{display:block;font-size:13px}
+
+/* Domino tile style */
+.tile{
+  width:44px;
+  height:88px;
+  background:linear-gradient(#fff8dc,#f1e6bd);
+  border:2px solid #2c1c0e;
+  border-radius:9px;
+  display:flex;
+  flex-direction:column;
+  box-shadow:0 5px 12px rgba(0,0,0,.55);
+  flex:0 0 auto;
+  overflow:hidden;
+  animation:drop .18s ease;
+}
+.tile.horizontal{
+  width:88px;
+  height:44px;
+  flex-direction:row;
+}
+.tile.ok{
+  box-shadow:
+    0 0 0 4px #ffe66d,
+    0 0 18px #ffe66d,
+    0 5px 12px rgba(0,0,0,.55);
+}
+.tile.selected{
+  box-shadow:
+    0 0 0 4px #38bdf8,
+    0 0 18px #38bdf8;
+}
+.tile.yellow{
+  background:linear-gradient(#ffe37b,#f3c646);
+}
+.half{
+  flex:1;
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  grid-template-rows:repeat(3,1fr);
+  padding:4px;
+  border-bottom:1.5px solid #333;
+}
+.tile.horizontal .half{
+  border-bottom:0;
+  border-left:1.5px solid #333;
+}
+.tile .half:last-child{border:0}
+.pip{
+  width:6.5px;
+  height:6.5px;
+  background:#111;
+  border-radius:50%;
+  align-self:center;
+  justify-self:center;
+}
+@keyframes drop{
+  from{transform:scale(.8);opacity:.25}
+  to{transform:scale(1);opacity:1}
+}
+
+.hand{
+  position:fixed;
+  bottom:0;
+  left:0;
+  right:0;
+  max-width:560px;
+  margin:auto;
+  background:linear-gradient(#5d351f,#3a2115);
+  border-radius:24px 24px 0 0;
+  padding:10px;
+  display:flex;
+  gap:7px;
+  overflow:auto;
+  z-index:20;
+  border-top:3px solid #b9824a;
+}
+.hand .tile{
+  width:52px;
+  height:104px;
+}
+.sidePicker{
+  display:none;
+  position:fixed;
+  bottom:125px;
+  left:18px;
+  right:18px;
+  max-width:520px;
+  margin:auto;
+  background:#111;
+  border:1px solid #fff3;
+  border-radius:18px;
+  padding:12px;
+  z-index:60;
+}
+.toast{
+  position:fixed;
+  bottom:116px;
+  left:16px;
+  right:16px;
+  background:#111;
+  padding:14px;
+  border-radius:14px;
+  text-align:center;
+  display:none;
+  z-index:70;
+}
+.rules{max-height:420px;overflow:auto;line-height:1.8}
+
+/* Premium lobby redesign */
+.premium-hero{
+  position:relative;
+  overflow:hidden;
+  border-radius:30px;
+  padding:18px;
+  margin-bottom:14px;
+  background:
+    linear-gradient(135deg,rgba(255,255,255,.14),rgba(255,255,255,.04)),
+    radial-gradient(circle at top right,#22d3ee55,transparent 35%),
+    radial-gradient(circle at bottom left,#f59e0b55,transparent 35%),
+    #12081f;
+  border:1px solid rgba(255,255,255,.18);
+  box-shadow:0 24px 70px rgba(0,0,0,.55);
+}
+.hero-glow{
+  position:absolute;
+  width:190px;height:190px;
+  background:#22d3ee55;
+  filter:blur(55px);
+  top:-70px;left:-60px;
+}
+.hero-top{
+  position:relative;
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+}
+.game-title{
+  font-size:28px;
+  font-weight:1000;
+  letter-spacing:-.5px;
+}
+.game-subtitle{
+  color:#d8c7ff;
+  font-size:12px;
+  margin-top:5px;
+}
+.rank-badge{
+  min-width:64px;
+  text-align:center;
+  background:linear-gradient(135deg,#facc15,#f97316);
+  color:#1c1200;
+  border-radius:999px;
+  padding:8px 11px;
+  font-weight:1000;
+  box-shadow:0 8px 18px rgba(0,0,0,.35);
+}
+.profile-card{
+  position:relative;
+  margin-top:18px;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:12px;
+  border-radius:24px;
+  background:rgba(0,0,0,.38);
+  border:1px solid rgba(255,255,255,.16);
+}
+.profile-avatar{
+  width:64px;height:64px;
+  border-radius:22px;
+  display:grid;
+  place-items:center;
+  font-size:34px;
+  background:linear-gradient(135deg,#22d3ee,#2563eb);
+  box-shadow:0 10px 25px rgba(0,0,0,.35);
+}
+.profile-fields{flex:1}
+.profile-fields input,.profile-fields select{
+  margin:4px 0;
+  background:rgba(255,255,255,.95);
+  color:#121212;
+  border-radius:16px;
+}
+.save-mini{
+  width:48px;
+  height:48px;
+  padding:0;
+  border-radius:16px;
+  background:linear-gradient(135deg,#22c55e,#16a34a);
+  color:white;
+  font-size:22px;
+}
+.stats-row{
+  position:relative;
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:8px;
+  margin-top:12px;
+}
+.stat-chip{
+  background:rgba(0,0,0,.42);
+  border:1px solid rgba(255,255,255,.14);
+  border-radius:18px;
+  padding:10px 6px;
+  text-align:center;
+}
+.stat-chip span{display:block;font-size:20px}
+.stat-chip b{display:block;font-size:20px;margin-top:2px}
+.stat-chip small{font-size:10px;color:#d1d5db}
+
+.mode-panel{
+  border-radius:30px;
+  padding:16px;
+  background:
+    linear-gradient(180deg,rgba(255,255,255,.11),rgba(255,255,255,.04)),
+    #0b0712;
+  border:1px solid rgba(255,255,255,.16);
+  box-shadow:0 24px 70px rgba(0,0,0,.45);
+}
+.section-title{
+  font-size:22px;
+  font-weight:1000;
+  margin-bottom:12px;
+}
+.pretty-label{
+  display:block;
+  margin-bottom:8px;
+  color:#e7d8ff;
+  font-weight:900;
+}
+.target-switch{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+  background:#0008;
+  border-radius:18px;
+  padding:6px;
+  margin-bottom:12px;
+}
+.target-btn{
+  margin:0;
+  background:transparent;
+  color:#fff;
+  border-radius:14px;
+  box-shadow:none;
+}
+.active-target{
+  background:linear-gradient(135deg,#22d3ee,#3b82f6);
+}
+.main-play,.mode-btn{
+  display:flex;
+  align-items:center;
+  justify-content:flex-start;
+  gap:12px;
+  text-align:right;
+  border-radius:22px;
+  padding:16px;
+  box-shadow:0 12px 30px rgba(0,0,0,.35);
+}
+.main-play{
+  background:linear-gradient(135deg,#2dd4bf,#3b82f6);
+  color:#fff;
+}
+.main-play span,.mode-btn span{
+  width:48px;height:48px;
+  display:grid;
+  place-items:center;
+  font-size:25px;
+  border-radius:16px;
+  background:rgba(255,255,255,.22);
+}
+.main-play b,.mode-btn b{display:block;font-size:17px}
+.main-play small,.mode-btn small{
+  display:block;
+  margin-top:3px;
+  opacity:.86;
+  font-size:11px;
+}
+.mode-btn.gold{
+  background:linear-gradient(135deg,#fde68a,#d97706);
+  color:#211000;
+}
+.join-box{
+  display:grid;
+  grid-template-columns:1.2fr .8fr;
+  gap:8px;
+  margin-top:8px;
+}
+.join-box input{
+  margin:7px 0;
+  background:#fff;
+  color:#111;
+}
+.join-box button{
+  background:linear-gradient(135deg,#facc15,#f97316);
+}
+.quick-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+.quick-btn{
+  background:#1f1f1f;
+  color:#fff;
+  border-radius:20px;
+  padding:16px 10px;
+}
+.leader-panel{
+  margin-top:14px;
+  background:#0009;
+  border:1px solid rgba(255,255,255,.14);
+  border-radius:24px;
+  padding:14px;
+}
+
+
+/* FIX: board domino visibility on mobile */
+.domino-board{
+  inset:48px 8px 145px 8px !important;
+  grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) !important;
+  grid-template-rows:minmax(0,1fr) auto minmax(0,1fr) !important;
+  overflow:hidden;
+}
+
+.branch{
+  max-width:100%;
+  max-height:100%;
+  overflow:visible;
+  gap:2px !important;
+}
+
+#leftBranch,#rightBranch{
+  max-width:calc(50vw - 76px);
+  overflow:hidden;
+  flex-wrap:nowrap !important;
+}
+
+#topBranch,#bottomBranch{
+  max-height:135px;
+  overflow:hidden;
+  flex-wrap:nowrap !important;
+}
+
+.table-wrap .tile{
+  width:34px !important;
+  height:68px !important;
+  border-radius:7px !important;
+}
+
+.table-wrap .tile.horizontal{
+  width:68px !important;
+  height:34px !important;
+}
+
+.table-wrap .pip{
+  width:5px !important;
+  height:5px !important;
+}
+
+.table-wrap .half{
+  padding:3px !important;
+}
+
+.center-tile .tile{
+  width:40px !important;
+  height:80px !important;
+}
+
+.hand{
+  min-height:118px;
+}
+
+.hand .tile{
+  width:44px !important;
+  height:88px !important;
+}
+
+@media(max-width:390px){
+  .table-wrap .tile{
+    width:30px !important;
+    height:60px !important;
+  }
+  .table-wrap .tile.horizontal{
+    width:60px !important;
+    height:30px !important;
+  }
+  #leftBranch,#rightBranch{
+    max-width:calc(50vw - 66px);
+  }
+}
+
+
+/* FINAL FIX: clean 4-direction domino placement */
+.table-wrap{
+  min-height:560px !important;
+  overflow:hidden !important;
+}
+.domino-board{
+  position:absolute !important;
+  inset:58px 12px 145px 12px !important;
+  display:block !important;
+  overflow:hidden !important;
+}
+.center-tile{
+  position:absolute !important;
+  left:50% !important;
+  top:50% !important;
+  transform:translate(-50%,-50%) !important;
+  z-index:10 !important;
+}
+.branch{
+  position:absolute !important;
+  display:flex !important;
+  gap:2px !important;
+  align-items:center !important;
+  justify-content:flex-start !important;
+  overflow:hidden !important;
+  z-index:7 !important;
+}
+#leftBranch{
+  right:calc(50% + 24px) !important;
+  left:4px !important;
+  top:50% !important;
+  transform:translateY(-50%) !important;
+  flex-direction:row-reverse !important;
+}
+#rightBranch{
+  left:calc(50% + 24px) !important;
+  right:4px !important;
+  top:50% !important;
+  transform:translateY(-50%) !important;
+  flex-direction:row !important;
+}
+#topBranch{
+  left:50% !important;
+  top:4px !important;
+  bottom:calc(50% + 48px) !important;
+  transform:translateX(-50%) !important;
+  flex-direction:column-reverse !important;
+  width:46px !important;
+}
+#bottomBranch{
+  left:50% !important;
+  top:calc(50% + 48px) !important;
+  bottom:4px !important;
+  transform:translateX(-50%) !important;
+  flex-direction:column !important;
+  width:46px !important;
+}
+.table-wrap .tile{
+  width:30px !important;
+  height:60px !important;
+  min-width:30px !important;
+  border-radius:7px !important;
+}
+.table-wrap .tile.horizontal{
+  width:60px !important;
+  height:30px !important;
+  min-width:60px !important;
+}
+.center-tile .tile{
+  width:40px !important;
+  height:80px !important;
+  min-width:40px !important;
+}
+.table-wrap .pip{
+  width:4.5px !important;
+  height:4.5px !important;
+}
+.table-wrap .half{
+  padding:2px !important;
+}
+.board-more{
+  background:rgba(0,0,0,.55);
+  color:#fff;
+  border-radius:999px;
+  padding:3px 7px;
+  font-size:10px;
+  font-weight:900;
+  flex:0 0 auto;
+}
+.hand .tile{
+  width:46px !important;
+  height:92px !important;
+}
+@media(max-width:390px){
+  .table-wrap .tile{
+    width:27px !important;
+    height:54px !important;
+    min-width:27px !important;
+  }
+  .table-wrap .tile.horizontal{
+    width:54px !important;
+    height:27px !important;
+    min-width:54px !important;
+  }
+  .center-tile .tile{
+    width:36px !important;
+    height:72px !important;
+    min-width:36px !important;
+  }
+  #leftBranch{right:calc(50% + 21px) !important;}
+  #rightBranch{left:calc(50% + 21px) !important;}
+  #topBranch{bottom:calc(50% + 42px) !important;width:40px !important;}
+  #bottomBranch{top:calc(50% + 42px) !important;width:40px !important;}
+}
+
+</style>
+</head>
+<body>
+<div class="app">
+
+
+<section id="home" class="screen active">
+  <div class="premium-hero">
+    <div class="hero-glow"></div>
+    <div class="hero-top">
+      <div>
+        <div class="game-title">🎲 دۆمینۆی کوردی</div>
+        <div class="game-subtitle">Pro Rules • Online • AI • Teams</div>
+      </div>
+      <div class="rank-badge" id="rank">نوێ</div>
+    </div>
+
+    <div class="profile-card">
+      <div class="profile-avatar" id="avatarPreview">🦁</div>
+      <div class="profile-fields">
+        <input id="name" placeholder="ناوی خۆت">
+        <select id="avatar" onchange="avatarPreview.innerText=this.value">
+          <option>🦁</option>
+          <option>😎</option>
+          <option>🔥</option>
+          <option>🎲</option>
+          <option>⭐</option>
+          <option>👑</option>
+          <option>🐺</option>
+        </select>
+      </div>
+      <button class="save-mini" onclick="save()">✓</button>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-chip"><span>🪙</span><b id="coinStat">0</b><small>Coins</small></div>
+      <div class="stat-chip"><span>⭐</span><b id="xpStat">0</b><small>XP</small></div>
+      <div class="stat-chip"><span>🏆</span><b id="winStat">0</b><small>Wins</small></div>
+    </div>
+  </div>
+
+  <div class="mode-panel">
+    <div class="section-title">دەستپێکردنی یاری</div>
+
+    <label class="pretty-label">ئامانجی خاڵ</label>
+    <div class="target-switch">
+      <button type="button" onclick="target.value='350';selectTarget(this)" class="target-btn active-target">350</button>
+      <button type="button" onclick="target.value='450';selectTarget(this)" class="target-btn">450</button>
+    </div>
+    <select id="target" style="display:none">
+      <option value="350">350 خاڵ</option>
+      <option value="450">450 خاڵ</option>
+    </select>
+
+    <button class="main-play" onclick="findMatch()">
+      <span>🌍</span>
+      <div><b>Matchmaking</b><small>یاریزان بدۆزەرەوە، ئەگەر نەبوو Bot دێت</small></div>
+    </button>
+
+    <button class="mode-btn gold" onclick="createRoom()">
+      <span>🏠</span>
+      <div><b>ژووری تایبەت</b><small>کۆدی ژوور بۆ هاوڕێکانت بنێرە</small></div>
+    </button>
+
+    <div class="join-box">
+      <input id="code" placeholder="کۆدی ژوور">
+      <button onclick="joinRoom()">چوونە ژوور</button>
+    </div>
+
+    <div class="quick-grid">
+      <button class="quick-btn" onclick="show('rules')">📜<br>یاساکان</button>
+      <button class="quick-btn" onclick="leaderboard()">🏆<br>Leaderboard</button>
+    </div>
+  </div>
+
+  <div id="leaders" class="leader-panel" style="display:none"></div>
+</section>
+
+
+<section id="rules" class="screen">
+  <div class="top">
+    <button onclick="show('home')" class="dark">‹</button>
+    <b>یاساکانی Pro</b>
+  </div>
+
+  <div class="card rules">
+    <p>٢ یان ٤ یاریزان. لە ٤ کەسی، تیمی ٢ بەرامبەر ٢.</p>
+    <p>هەر یاریزان ٧ دۆمینۆ وەردەگرێت. ماوە دەبێتە بانک.</p>
+    <p>دەستپێک: گەورەترین دۆبل، ئەگەر نەبوو گەورەترین کۆی ژمارە.</p>
+    <p>یاری بە شێوەی (+): راست، چەپ، سەر، خوار.</p>
+    <p>خاڵی لا کراوەکان کۆ دەکرێتەوە. ئەگەر مضاعفی ٥ بوو، هەمان خاڵ دەنووسرێت.</p>
+    <p>ئەگەر دۆمینۆ نەبوو، لە بانک دەکێشیت تا دۆمینۆی گونجاو بدۆزیتەوە.</p>
+    <p>کۆتایی ڕاوند: دۆمینۆ یان داخراوی. خاڵەکان بۆ نزیکترین ٥ خڕ دەکرێنەوە.</p>
+    <p>بردنەوەی گەورە: ٣٥٠ یان ٤٥٠ خاڵ.</p>
+  </div>
+</section>
+
+<section id="lobby" class="screen">
+  <div class="top">
+    <button onclick="show('home')" class="dark">‹</button>
+    <b>Room <span id="room">----</span></b>
+  </div>
+
+  <div class="card">
+    <div id="lobbyPlayers"></div>
+    <button onclick="addBot()">+ Bot</button>
+    <button class="green" onclick="startGame()">دەستپێکردن</button>
+  </div>
+</section>
+
+<section id="game" class="screen">
+  <div class="top">
+    <button onclick="show('home')" class="dark">‹</button>
+    <b id="turn">نۆرە</b>
+    <span id="round">R1</span>
+  </div>
+
+  <div class="scorebar" id="scorebar"></div>
+
+  <div class="table-wrap">
+    <div class="table-top-info">
+      <span class="info-pill" id="openScore">لاکان: 0</span>
+      <span class="info-pill" id="bankInfo">بانک: 0</span>
+    </div>
+
+    <div class="domino-board">
+      <div id="topBranch" class="branch vertical"></div>
+      <div id="leftBranch" class="branch horizontal"></div>
+      <div id="centerTile" class="center-tile"></div>
+      <div id="rightBranch" class="branch horizontal"></div>
+      <div id="bottomBranch" class="branch vertical"></div>
+    </div>
+
+    <div class="players" id="players"></div>
+  </div>
+
+  <div class="card">
+    <button onclick="draw()">کێشان لە بانک</button>
+    <button class="dark" onclick="pass()">پاس</button>
+  </div>
+
+  <div class="hand" id="hand"></div>
+</section>
+</div>
+
+<div id="picker" class="sidePicker"></div>
+<div id="toast" class="toast"></div>
+
+<script>
+const socket = io();
+
+let profile = JSON.parse(localStorage.getItem("p") || '{"playerId":"","name":"Player","avatar":"🦁"}');
+if(!profile.playerId){
+  profile.playerId = "p_" + Math.random().toString(36).slice(2);
+  localStorage.setItem("p", JSON.stringify(profile));
+}
+
+let state = null;
+
+name.value = profile.name;
+avatar.value = profile.avatar;
+register();
+
+function show(id){
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
+}
+
+
+function selectTarget(btn){
+  document.querySelectorAll(".target-btn").forEach(b=>b.classList.remove("active-target"));
+  btn.classList.add("active-target");
+}
+function msg(t){
+  toast.innerText = t;
+  toast.style.display = "block";
+  setTimeout(() => toast.style.display = "none", 2200);
+}
+
+function save(){
+  profile.name = name.value || "Player";
+  profile.avatar = avatar.value;
+  localStorage.setItem("p", JSON.stringify(profile));
+  register();
+  msg("پاشەکەوت کرا");
+}
+
+async function register(){
+  socket.emit("register", profile);
+  try{
+    await fetch("/api/profile", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(profile)
+    });
+    let r = await fetch("/api/profile/" + profile.playerId).then(x => x.json());
+    if(r.player){
+      stats.innerText = `Coins: ${r.player.coins} | XP: ${r.player.xp} | Wins: ${r.player.wins}`;
+      if(document.getElementById("coinStat")) coinStat.innerText = r.player.coins || 0;
+      if(document.getElementById("xpStat")) xpStat.innerText = r.player.xp || 0;
+      if(document.getElementById("winStat")) winStat.innerText = r.player.wins || 0;
+      rank.innerText = r.player.rank;
+    }
+  }catch(e){}
+}
+
+function findMatch(){
+  socket.emit("findMatch", {targetScore:Number(target.value)});
+  msg("گەڕان بۆ یاریزان...");
+}
+
+function createRoom(){
+  socket.emit("createRoom", {
+    playerName:profile.avatar + " " + profile.name,
+    targetScore:Number(target.value),
+    teamMode:true
+  });
+}
+
+function joinRoom(){
+  socket.emit("joinRoom", {
+    roomId:code.value,
+    playerName:profile.avatar + " " + profile.name
+  });
+}
+
+function addBot(){ socket.emit("addBot"); }
+function startGame(){ socket.emit("startGame"); }
+function draw(){ socket.emit("drawTile"); }
+function pass(){ socket.emit("passTurn"); }
+
+async function leaderboard(){
+  leaders.style.display = "block";
+  let r = await fetch("/api/leaderboard").then(x => x.json());
+  leaders.innerHTML = "<h3>Leaderboard</h3>" + (r.players || []).map((p,i) =>
+    `<p>${i+1}. ${p.avatar || "🎲"} ${p.name} - XP ${p.xp}</p>`
+  ).join("");
+}
+
+function pips(n){
+  let spots = {
+    0:[],
+    1:[4],
+    2:[0,8],
+    3:[0,4,8],
+    4:[0,2,6,8],
+    5:[0,2,4,6,8],
+    6:[0,2,3,5,6,8]
+  }[n] || [];
+
+  return Array.from({length:9}, (_,i) =>
+    spots.includes(i) ? '<i class="pip"></i>' : '<i></i>'
+  ).join("");
+}
+
+function tile(t, ok=false, horizontal=false, yellow=false){
+  return `
+    <div class="tile ${ok ? 'ok' : ''} ${horizontal ? 'horizontal' : ''} ${yellow ? 'yellow' : ''}">
+      <div class="half">${pips(t.left)}</div>
+      <div class="half">${pips(t.right)}</div>
+    </div>
+  `;
+}
+
+function canOn(tileObj, side){
+  if(!state) return false;
+  if(!state.board.length) return true;
+  let s = state.openSides.find(x => x.side === side);
+  return s && [tileObj.left, tileObj.right].includes(s.value);
+}
+
+function canAny(t){
+  return !state?.board?.length || state.openSides.some(s => [t.left,t.right].includes(s.value));
+}
+
+function chooseSide(t){
+  if(!state.yourTurn) return;
+
+  let sides = ["right","left","top","bottom"].filter(s => canOn(t,s));
+  if(!state.board.length) sides = ["right"];
+
+  picker.innerHTML =
+    "<b>لاک هەڵبژێرە</b>" +
+    sides.map(s => `<button onclick="play('${t.id}','${s}')">${labelSide(s)}</button>`).join("") +
+    '<button class="danger" onclick="picker.style.display=\'none\'">داخستن</button>';
+
+  picker.style.display = "block";
+}
+
+function labelSide(s){
+  return {right:"راست",left:"چەپ",top:"سەر",bottom:"خوار"}[s] || s;
+}
+
+function play(id,side){
+  picker.style.display = "none";
+  socket.emit("playTile", {tileId:id, side});
+}
+
+function renderBranch(id, side){
+  let allTiles = (state.board || []).filter(t => t.side === side);
+  let horizontal = side === "left" || side === "right";
+
+  // Mobile-safe limits: horizontal arms show max 4, vertical arms max 3.
+  const maxShow = horizontal ? 4 : 3;
+  const hidden = Math.max(0, allTiles.length - maxShow);
+
+  // Show the newest tiles near the center so playable end remains visible.
+  const visible = allTiles.slice(-maxShow);
+
+  let html = visible.map((t,i) => tile(t,false,horizontal,(allTiles.length-hidden+i) % 5 === 4)).join("");
+
+  if(hidden > 0){
+    const more = `<span class="board-more">+${hidden}</span>`;
+    html = (side === "left" || side === "top") ? html + more : more + html;
+  }
+
+  document.getElementById(id).innerHTML = html;
+}
+
+function render(s){
+  state = s;
+  show("game");
+
+  turn.innerText = s.yourTurn ? "نۆرەی تۆیە" : "نۆرەی " + s.currentPlayerName;
+  round.innerText = "ڕاوند " + s.roundNumber;
+  openScore.innerText = "لاکان: " + s.openScore;
+  bankInfo.innerText = "بانک: " + s.boneyardCount;
+
+  scorebar.innerHTML = Object.entries(s.teams || {}).map(([k,v]) =>
+    `<div class="scorebox"><b>${k}</b><br>${v.score}/${s.targetScore}<br><small>${(v.names || []).join(" + ")}</small></div>`
+  ).join("");
+
+  let center = (s.board || []).find(t => t.side === "center");
+  centerTile.innerHTML = center ? tile(center,false,false,true) : "<b>یەکەم دۆمینۆ</b>";
+
+  renderBranch("rightBranch","right");
+  renderBranch("leftBranch","left");
+  renderBranch("topBranch","top");
+  renderBranch("bottomBranch","bottom");
+
+  hand.innerHTML = s.yourHand.map(t =>
+    `<div onclick='chooseSide(${JSON.stringify(t)})'>${tile(t,s.yourTurn && canAny(t))}</div>`
+  ).join("");
+
+  players.innerHTML = s.players.map(p =>
+    `<div class="player">${p.avatar || "🎲"}<br><b>${p.name}</b>${p.team}<br>${p.tilesCount} دۆمینۆ</div>`
+  ).join("");
+
+  if(s.lastScore && s.lastScore.points) msg(`${s.lastScore.reason}: +${s.lastScore.points}`);
+  if(s.penalty) msg(`سزا: -${s.penalty.amount}`);
+  if(s.winner) msg(`براوەی ڕاوند: ${s.winner.name} +${s.winner.rounded}`);
+  if(s.gameWinner){
+    msg(`🏆 براوەی یاری: ${s.gameWinner.ownerKey}`);
+    register();
+  }
+}
+
+socket.on("roomCreated", d => {
+  room.innerText = d.roomId;
+  show("lobby");
+});
+
+socket.on("roomJoined", d => {
+  room.innerText = d.roomId;
+  show("lobby");
+});
+
+socket.on("lobbyUpdate", d => {
+  room.innerText = d.roomId;
+  lobbyPlayers.innerHTML = d.players.map(p =>
+    `<div class="player">${p.avatar || "🎲"} ${p.name}<br>${p.team || ""} ${p.isHost ? "Host" : ""}</div>`
+  ).join("");
+});
+
+socket.on("gameState", render);
+socket.on("queueStatus", () => msg("چاوەڕێی یاریزان..."));
+socket.on("error", e => msg(e.message || "هەڵە"));
+</script>
+</body>
+</html>
