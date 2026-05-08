@@ -124,62 +124,67 @@ function recalculateEnds(board) {
 }
 
 // Calculate sum of all open ends (for scoring)
+// PER KURDISH RULES:
+// - Sum of all open ends counts
+// - Doubles count as BOTH numbers (e.g., 5|5 = 10)
+// - When a double is placed at end of branch, it counts as left+right
+// - When non-double is placed, only outer end shows
 function calculateOpenEndsSum(board) {
   if (!board.center) return 0;
   
+  // Special case 1: First tile is non-double, no extensions yet
+  // Both sides of the tile are open ends
+  if (!board.isFourDirectional && board.right.length === 0 && board.left.length === 0) {
+    return board.center.right + board.center.left;
+  }
+  
+  // Special case 2: First tile is double (4-directional), no extensions yet
+  // Per Kurdish rule: doubles count twice. The double itself shows.
+  // 5|5 alone = 10 points (per Rule 12 & Rule 13 Example 1)
+  if (board.isFourDirectional && board.right.length === 0 && board.left.length === 0 
+      && board.up.length === 0 && board.down.length === 0) {
+    return board.center.left + board.center.right;
+  }
+  
   let sum = 0;
   
-  // Helper: a double counts as both numbers (its full pip count)
-  // i.e., 5|5 counts as 10, even at end
+  // For 2-directional board: only right and left
+  // For 4-directional board: right, left, up, down
+  const directions = board.isFourDirectional 
+    ? ['right', 'left', 'up', 'down']
+    : ['right', 'left'];
   
-  // Check each direction
-  ['right', 'left', 'up', 'down'].forEach(dir => {
+  directions.forEach(dir => {
     const branch = board[dir];
-    if (board.ends[dir] === null) return;
     
     if (branch.length === 0) {
-      // No tile placed yet in this direction; the center's side is open
-      // This only happens when 4-directional and no extension yet
-      if (board.isFourDirectional && isDouble(board.center)) {
-        // Each side of the double is one of its values
+      // No tile in this direction - the center's side is the open end
+      if (dir === 'right') {
+        // The right side of center
+        if (isDouble(board.center)) {
+          // For 4-dir, center is always a double; show one value
+          sum += board.center.right;
+        } else {
+          sum += board.center.right;
+        }
+      } else if (dir === 'left') {
         sum += board.center.left;
+      } else if ((dir === 'up' || dir === 'down') && board.isFourDirectional) {
+        // 4-dir center is always a double
+        sum += board.center.left; // doubles have left===right
       }
     } else {
-      // The last tile in the branch - check if it's a "double-end"
+      // Last tile in branch determines open end
       const lastTile = branch[branch.length - 1];
       if (isDouble(lastTile)) {
-        // Double counts as both numbers
+        // Per Kurdish rule: double counts twice (both numbers)
         sum += lastTile.left + lastTile.right;
       } else {
-        // Just the outer end
+        // Non-double: only outer end is visible
         sum += lastTile._outerEnd;
       }
     }
   });
-  
-  // Special case: empty board with first tile being a double NOT yet extended
-  // For first move scoring, we need to handle: 5|5 played first = 10 points (4 directions sum to 5+5+5+5=20, but actually it's just the double = 10)
-  // Wait: per rules, doubles count twice. 5|5 has 4 sides all showing 5, but it's still scored as 10 (the double itself)
-  // Actually looking again: when 5|5 is placed first, the OPEN ENDS are 5, 5, 5, 5 = 20 (not a multiple of 5 wait yes 20 is multiple of 5)
-  // Hmm, but rule 13 example 1 says "Open ends: 5, 5; Total: 10" - this is 2-direction case
-  // For 4-directional, it would be 5+5+5+5 = 20
-  // Let me re-read... rules don't explicitly cover the very first move 4-direction case.
-  // I'll interpret: when only the center double exists with no extensions, each direction shows one of its numbers
-  // So 5|5 alone in 4-dir = 5+5+5+5 = 20 points
-  
-  // Special case: 2-direction first move (non-double tile)
-  if (!board.isFourDirectional && board.right.length === 0 && board.left.length === 0) {
-    // First move was non-double, just placed center
-    // Open ends are: center.right and center.left
-    sum = board.center.right + board.center.left;
-  }
-  
-  // Special case: 4-direction first move with no extensions
-  if (board.isFourDirectional && board.right.length === 0 && board.left.length === 0 
-      && board.up.length === 0 && board.down.length === 0) {
-    // The double shows on all 4 sides
-    sum = board.center.left * 2 + board.center.right * 2; // Same number 4 times
-  }
   
   return sum;
 }
@@ -553,7 +558,7 @@ async function saveGameToDatabase(room, winner) {
 }
 
 // ===== AI =====
-function aiSelectMove(player, board, difficulty) {
+function aiSelectMove(player, board, difficulty, room) {
   // Get all valid moves across all tiles and directions
   const allMoves = [];
   for (const tile of player.hand) {
@@ -583,31 +588,94 @@ function aiSelectMove(player, board, difficulty) {
   if (difficulty === 'medium') {
     // Score each move
     const scored = allMoves.map(move => {
-      const score = (move.tile.left + move.tile.right) + (isDouble(move.tile) ? 5 : 0);
+      let score = (move.tile.left + move.tile.right) + (isDouble(move.tile) ? 5 : 0);
+      
+      // Bonus: prefer moves that score multiples of 5
+      const tempBoard = deepCloneBoard(board);
+      placeTile(tempBoard, move.tile, move.direction);
+      const newSum = calculateOpenEndsSum(tempBoard);
+      if (newSum > 0 && newSum % 5 === 0) {
+        score += newSum * 2;
+      }
+      
       return { ...move, _score: score };
     });
     scored.sort((a,b) => b._score - a._score);
     return scored[0];
   }
   
-  // Hard: simulate move and check if it creates multiple of 5
+  // Hard: simulate move with team awareness
+  const isTeamMode = room && room.teams;
+  const teammate = isTeamMode 
+    ? room.players.find(p => p.team === player.team && p.id !== player.id) 
+    : null;
+  
   const scored = allMoves.map(move => {
     let score = (move.tile.left + move.tile.right) * 2;
     if (isDouble(move.tile)) score += 10;
     
     // Simulate placement
-    const tempBoard = JSON.parse(JSON.stringify(board));
+    const tempBoard = deepCloneBoard(board);
     placeTile(tempBoard, move.tile, move.direction);
     const newSum = calculateOpenEndsSum(tempBoard);
     
+    // Big bonus for scoring move (multiple of 5)
     if (newSum > 0 && newSum % 5 === 0) {
-      score += newSum * 3; // Big bonus for scoring move
+      score += newSum * 3;
     }
+    
+    // Team mode: don't leave board state that helps opponents
+    if (isTeamMode && teammate) {
+      // Check if teammate has tiles that can play after this move
+      const teammateCanPlay = teammate.hand.some(t => 
+        getValidMoves(t, tempBoard).length > 0
+      );
+      if (teammateCanPlay) score += 5; // Bonus for keeping teammate able to play
+      
+      // Check what opponents can score
+      const opponents = room.players.filter(p => p.team !== player.team);
+      let opponentBestScore = 0;
+      opponents.forEach(opp => {
+        opp.hand.forEach(t => {
+          const oppMoves = getValidMoves(t, tempBoard);
+          oppMoves.forEach(om => {
+            const tb2 = deepCloneBoard(tempBoard);
+            placeTile(tb2, t, om.direction);
+            const oppSum = calculateOpenEndsSum(tb2);
+            if (oppSum > 0 && oppSum % 5 === 0 && oppSum > opponentBestScore) {
+              opponentBestScore = oppSum;
+            }
+          });
+        });
+      });
+      // Penalty for leaving high-scoring positions for opponents
+      score -= opponentBestScore * 2;
+    }
+    
+    // Prefer playing tiles we have multiple of (defensive)
+    const sameValueCount = player.hand.filter(t => 
+      t.left === move.tile.left || t.right === move.tile.left ||
+      t.left === move.tile.right || t.right === move.tile.right
+    ).length;
+    if (sameValueCount > 2) score += 3; // Get rid of common values early
     
     return { ...move, _score: score };
   });
   scored.sort((a,b) => b._score - a._score);
   return scored[0];
+}
+
+// Fast deep clone for board (faster than JSON.parse(JSON.stringify))
+function deepCloneBoard(board) {
+  return {
+    center: board.center ? { ...board.center } : null,
+    right: board.right.map(t => ({ ...t })),
+    left: board.left.map(t => ({ ...t })),
+    up: board.up.map(t => ({ ...t })),
+    down: board.down.map(t => ({ ...t })),
+    isFourDirectional: board.isFourDirectional,
+    ends: { ...board.ends }
+  };
 }
 
 function executeAIMove(roomId) {
@@ -616,7 +684,7 @@ function executeAIMove(roomId) {
   const player = room.players[room.currentTurn];
   if (!player || !player.isBot) return;
   
-  const move = aiSelectMove(player, room.board, room.aiDifficulty);
+  const move = aiSelectMove(player, room.board, room.aiDifficulty, room);
   
   if (move) {
     const tile = move.tile;
@@ -856,10 +924,55 @@ function tryReconnect(socket, sessionId) {
 }
 
 // ===== Socket Events =====
+const ipConnections = {}; // Track connections per IP
+const ipActions = {}; // Track action rate per IP
+
+function checkRateLimit(socket, action, maxPerMinute = 60) {
+  const ip = socket.handshake.address;
+  if (!ipActions[ip]) ipActions[ip] = {};
+  if (!ipActions[ip][action]) ipActions[ip][action] = [];
+  
+  const now = Date.now();
+  ipActions[ip][action] = ipActions[ip][action].filter(t => now - t < 60000);
+  
+  if (ipActions[ip][action].length >= maxPerMinute) return false;
+  ipActions[ip][action].push(now);
+  return true;
+}
+
+// Sanitize string input to prevent XSS
+function sanitizeText(text, maxLength = 200) {
+  if (typeof text !== 'string') return '';
+  return text
+    .replace(/[<>]/g, '') // remove angle brackets
+    .substring(0, maxLength)
+    .trim();
+}
+
 io.on('connection', (socket) => {
+  const ip = socket.handshake.address;
+  ipConnections[ip] = (ipConnections[ip] || 0) + 1;
+  
+  // Limit connections per IP
+  if (ipConnections[ip] > 10) {
+    socket.emit('error', { message: 'زۆر پەیوەستبوونی هاوکات!' });
+    socket.disconnect(true);
+    return;
+  }
+  
+  socket.on('disconnect', () => {
+    ipConnections[ip] = Math.max(0, (ipConnections[ip] || 1) - 1);
+    const qIdx = matchmakingQueue.findIndex(p => p.socketId === socket.id);
+    if (qIdx !== -1) matchmakingQueue.splice(qIdx, 1);
+  });
+  
   socket.emit('stats', { onlinePlayers: io.sockets.sockets.size, activeRooms: Object.keys(rooms).length });
 
   socket.on('initSession', async ({ sessionId, playerName, avatar, level }) => {
+    if (!checkRateLimit(socket, 'initSession', 10)) return;
+    playerName = sanitizeText(playerName, 20) || 'یاریزان';
+    avatar = sanitizeText(avatar, 4) || '😎';
+    
     if (sessionId && sessions[sessionId]) {
       if (tryReconnect(socket, sessionId)) return;
       sessions[sessionId].socketId = socket.id;
@@ -926,6 +1039,12 @@ io.on('connection', (socket) => {
   });
 
   socket.on('createRoom', ({ playerName, avatar, level, targetScore, teams }) => {
+    if (!checkRateLimit(socket, 'createRoom', 5)) {
+      return socket.emit('error', { message: 'زۆر خێرا ژوور دروست دەکەیت!' });
+    }
+    playerName = sanitizeText(playerName, 20) || 'یاریزان';
+    avatar = sanitizeText(avatar, 4) || '😎';
+    
     let roomId;
     do { roomId = genCode(); } while (rooms[roomId]);
     const room = createRoom(roomId, { isPrivate: true, targetScore, teams: !!teams });
@@ -1051,11 +1170,21 @@ io.on('connection', (socket) => {
     if (playerIdx !== room.currentTurn) return;
     if (room.boneyard.length === 0) return socket.emit('error', { message: 'بانک بەتاڵە!' });
     
-    // Per Kurdish rules: keep drawing until playable tile or bank empty
+    // Kurdish rule: keep drawing until playable tile or bank empty
     const player = room.players[playerIdx];
-    const tile = room.boneyard.pop();
-    player.hand.push(tile);
-    room.lastMove = { playerId: socket.id, action: 'draw' };
+    let drawnCount = 0;
+    while (room.boneyard.length > 0) {
+      const tile = room.boneyard.pop();
+      player.hand.push(tile);
+      drawnCount++;
+      // Check if this tile is playable
+      if (getValidMoves(tile, room.board).length > 0) break;
+    }
+    
+    room.lastMove = { playerId: socket.id, action: 'draw', drawnCount };
+    if (drawnCount > 1) {
+      addChatMessage(roomId, null, `🎴 ${player.name} ${drawnCount} دۆمینۆی وەرگرت`, true);
+    }
     broadcastGameState(roomId);
   });
 
@@ -1112,9 +1241,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('leaveRoom', () => handleLeave(socket, true));
-  socket.on('disconnect', () => {
-    const qIdx = matchmakingQueue.findIndex(p => p.socketId === socket.id);
-    if (qIdx !== -1) matchmakingQueue.splice(qIdx, 1);
+  socket.on('disconnecting', () => {
     handleLeave(socket, false);
   });
 });
