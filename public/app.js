@@ -961,20 +961,28 @@ function renderGame(state) {
   // Render the 4-direction board
   renderBoard4Direction(state.board);
   
+  // Show/hide up/down buttons based on board direction mode
+  const ctrlGrid = document.querySelector('.ctrl-grid-4');
+  if (state.board && state.board.center && !state.board.isFourDirectional) {
+    ctrlGrid.classList.add('two-dir-only');
+  } else {
+    ctrlGrid.classList.remove('two-dir-only');
+  }
+  
   // Render hand
   renderHand(state.yourHand || [], state.board, state.yourTurn);
   
   // Title
   if (state.yourTurn) {
     if (state.chooseFirstTile) {
-      $('handTitle').innerHTML = '<b style="color:var(--gold);">🏆 تۆ بردتەوە! دۆمینۆیەک هەڵبژێرە بۆ دەستپێکردن</b>';
+      $('handTitle').innerHTML = '<b style="color:var(--gold); font-size: 1rem;">🏆 تۆ بردتەوە! دۆمینۆیەک هەڵبژێرە بۆ دەستپێکردن</b>';
     } else if (!state.board.center) {
-      $('handTitle').innerHTML = '<b style="color:var(--gold);">🌟 یەکەم دانان (نۆرەی تۆیە)</b>';
+      $('handTitle').innerHTML = '<b style="color:var(--gold); font-size: 1rem;">🌟 یەکەم دانان - نۆرەی تۆیە!</b>';
     } else {
-      $('handTitle').innerHTML = '<b style="color:var(--gold);">🌟 نۆرەی تۆیە!</b>';
+      $('handTitle').innerHTML = '<b style="color:var(--success); font-size: 1rem;">✨ نۆرەی تۆیە! دۆمینۆیەک هەڵبژێرە</b>';
     }
   } else {
-    $('handTitle').textContent = `⏳ نۆرەی ${state.currentPlayerName}...`;
+    $('handTitle').innerHTML = `<span style="color: var(--text-dim);">⏳ نۆرەی <b style="color: var(--primary);">${state.currentPlayerName}</b>...</span>`;
   }
   
   // Controls
@@ -1040,8 +1048,12 @@ function renderBoard4Direction(board) {
   [...board.left].reverse().forEach(t => leftBranch.appendChild(createTileElement(t, 'horizontal')));
   middleRow.appendChild(leftBranch);
   
-  // Center tile - vertical if it's a double (4-dir), horizontal otherwise
-  const centerTile = createTileElement(board.center, board.isFourDirectional ? 'vertical' : 'horizontal');
+  // Center tile orientation:
+  // - If 4-directional (it's a double), show as horizontal so it visually appears perpendicular to vertical branches
+  // - If 2-directional (non-double), show as horizontal (matches left/right branches)
+  // Note: createTileElement will further flip orientation for doubles
+  const centerOrientation = 'horizontal';
+  const centerTile = createTileElement(board.center, centerOrientation);
   centerTile.classList.add('center-tile');
   middleRow.appendChild(centerTile);
   
@@ -1066,7 +1078,10 @@ function renderBoard4Direction(board) {
 function renderHand(hand, board, isYourTurn) {
   const handEl = $('hand');
   handEl.innerHTML = '';
-  if (!hand) return;
+  if (!hand || hand.length === 0) {
+    handEl.innerHTML = '<div class="hand-empty">🎴 هیچ دۆمینۆیەکت نییە</div>';
+    return;
+  }
   hand.forEach(tile => {
     const t = createHandTile(tile, board, isYourTurn);
     handEl.appendChild(t);
@@ -1075,8 +1090,18 @@ function renderHand(hand, board, isYourTurn) {
 
 function createTileElement(tile, orientation) {
   const div = document.createElement('div');
-  div.className = `domino ${orientation}`;
-  if (tile._isDouble || tile.left === tile.right) div.classList.add('double-tile');
+  // Doubles always show perpendicular to branch direction (Kurdish rule visual)
+  // If branch is horizontal, double shows vertical; if branch is vertical, double shows horizontal
+  const isDoubleTile = tile._isDouble || tile.left === tile.right;
+  let actualOrientation = orientation;
+  
+  if (isDoubleTile) {
+    // Doubles are perpendicular to their branch
+    actualOrientation = orientation === 'horizontal' ? 'vertical' : 'horizontal';
+  }
+  
+  div.className = `domino ${actualOrientation}`;
+  if (isDoubleTile) div.classList.add('double-tile');
   div.innerHTML = `<div class="domino-half">${createPips(tile.left)}</div><div class="domino-half">${createPips(tile.right)}</div>`;
   return div;
 }
@@ -1133,14 +1158,27 @@ function createHandTile(tile, board, isYourTurn) {
 }
 
 function createPips(value) {
+  // Position grid (1-9 = 3x3):
+  // 1 2 3
+  // 4 5 6
+  // 7 8 9
   const positions = {
-    0: [], 1: [5], 2: [1,9], 3: [1,5,9], 4: [1,3,7,9],
-    5: [1,3,5,7,9], 6: [1,3,4,6,7,9]
+    0: [],
+    1: [5],           // center
+    2: [1, 9],        // top-left, bottom-right
+    3: [1, 5, 9],     // diagonal
+    4: [1, 3, 7, 9],  // four corners
+    5: [1, 3, 5, 7, 9], // four corners + center
+    6: [1, 3, 4, 6, 7, 9] // two columns of 3
   };
   const pips = positions[value] || [];
   let html = '';
   for (let i = 1; i <= 9; i++) {
-    html += pips.includes(i) ? '<div class="pip"></div>' : '<div></div>';
+    if (pips.includes(i)) {
+      html += '<div class="pip-cell"><div class="pip"></div></div>';
+    } else {
+      html += '<div class="pip-cell"></div>';
+    }
   }
   return html;
 }
