@@ -473,77 +473,78 @@ body {
 .pc-score-pro { color: var(--gold); font-weight: 800; }
 
 /* ===== BOARD (4-DIRECTION KURDISH) ===== */
-.board-container-pro {
-  background: linear-gradient(135deg, rgba(0, 80, 50, 0.4), rgba(0, 60, 40, 0.3));
+..board-container-pro {
+  background: linear-gradient(
+    135deg,
+    rgba(0, 80, 50, 0.35),
+    rgba(0, 60, 40, 0.25)
+  );
+
   border: 2px solid rgba(0, 212, 170, 0.3);
-  border-radius: 16px;
-  padding: 8px;
-  min-height: 140px;
-  max-height: 200px;
-  overflow: auto;
+  border-radius: 18px;
+
+  padding: 10px;
   margin-bottom: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+
+  min-height: 230px;
+  max-height: 270px;
+
+  overflow: auto;
 }
+
 .board-pro {
-  width: 100%;
-  min-height: 120px;
+  position: relative;
+
+  min-width: 720px;
+  min-height: 320px;
+
+  display: block;
+}
+
+.board-pro.empty {
+  min-width: 100%;
+  min-height: 180px;
+
   display: flex;
   align-items: center;
   justify-content: center;
-  position: relative;
 }
+
 .board-pro.empty::before {
   content: '🎲 تەختەی بەتاڵ';
+
   color: var(--text-dim);
-  font-size: 0.95rem;
+
+  font-size: 1rem;
   font-weight: 700;
 }
+
 .board-pro.empty::after {
   content: 'یەکەم دۆمینۆ دابنێ';
+
   position: absolute;
-  bottom: 16px;
+
+  bottom: 18px;
   left: 50%;
+
   transform: translateX(-50%);
+
   color: var(--text-dim);
+
   font-size: 0.75rem;
-  white-space: nowrap;
 }
 
-/* 4-direction board layout */
-.board-layout {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  min-width: max-content;
-  padding: 8px;
-}
-.board-layout.two-dir {
-  flex-direction: row;
-  flex-wrap: nowrap;
-  padding: 4px;
-}
-.board-layout.four-dir { padding: 4px; }
+.board-tile-real {
+  position: absolute;
 
-.branch { display: flex; align-items: center; }
-.branch-up, .branch-down {
-  flex-direction: column;
-  gap: 1px;
+  transition:
+    left 0.25s ease,
+    top 0.25s ease,
+    transform 0.25s ease;
 }
-.branch-middle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: nowrap;
-  gap: 1px;
-  flex-direction: row;
-}
-.branch-left, .branch-right {
-  flex-direction: row;
-  gap: 1px;
+
+.real-board {
+  overflow: visible;
 }
 
 .center-tile {
