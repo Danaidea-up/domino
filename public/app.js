@@ -1020,61 +1020,62 @@ function renderGame(state) {
 function renderBoard4Direction(board) {
   const boardEl = $('board');
   boardEl.innerHTML = '';
-  
+
   if (!board || !board.center) {
     boardEl.classList.add('empty');
+    boardEl.classList.remove('real-board');
     return;
   }
-  boardEl.classList.remove('empty');
-  
-  // Create 4-quadrant layout container
-  const layout = document.createElement('div');
-  layout.className = `board-layout ${board.isFourDirectional ? 'four-dir' : 'two-dir'}`;
-  
-  // UP branch (in reverse order, since it grows upward)
-  if (board.isFourDirectional) {
-    const upBranch = document.createElement('div');
-    upBranch.className = 'branch branch-up';
-    [...board.up].reverse().forEach(t => upBranch.appendChild(createTileElement(t, 'vertical')));
-    layout.appendChild(upBranch);
-  }
-  
-  // Middle row (left + center + right)
-  const middleRow = document.createElement('div');
-  middleRow.className = 'branch-middle';
-  
-  const leftBranch = document.createElement('div');
-  leftBranch.className = 'branch branch-left';
-  [...board.left].reverse().forEach(t => leftBranch.appendChild(createTileElement(t, 'horizontal')));
-  middleRow.appendChild(leftBranch);
-  
-  // Center tile orientation:
-  // - If 4-directional (it's a double), show as horizontal so it visually appears perpendicular to vertical branches
-  // - If 2-directional (non-double), show as horizontal (matches left/right branches)
-  // Note: createTileElement will further flip orientation for doubles
-  const centerOrientation = 'horizontal';
-  const centerTile = createTileElement(board.center, centerOrientation);
-  centerTile.classList.add('center-tile');
-  middleRow.appendChild(centerTile);
-  
-  const rightBranch = document.createElement('div');
-  rightBranch.className = 'branch branch-right';
-  board.right.forEach(t => rightBranch.appendChild(createTileElement(t, 'horizontal')));
-  middleRow.appendChild(rightBranch);
-  
-  layout.appendChild(middleRow);
-  
-  // DOWN branch
-  if (board.isFourDirectional) {
-    const downBranch = document.createElement('div');
-    downBranch.className = 'branch branch-down';
-    board.down.forEach(t => downBranch.appendChild(createTileElement(t, 'vertical')));
-    layout.appendChild(downBranch);
-  }
-  
-  boardEl.appendChild(layout);
-}
 
+  boardEl.classList.remove('empty');
+  boardEl.classList.add('real-board');
+
+  const tileW = 76;
+  const gap = 6;
+  const centerX = 330;
+  const centerY = 145;
+
+  function addTile(tile, x, y, orientation, isCenter = false) {
+    const el = createTileElement(tile, orientation);
+    el.classList.add('board-tile-real');
+
+    if (isCenter) el.classList.add('center-tile');
+
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
+
+    boardEl.appendChild(el);
+  }
+
+  addTile(
+    board.center,
+    centerX,
+    centerY,
+    board.isFourDirectional ? 'vertical' : 'horizontal',
+    true
+  );
+
+  board.right.forEach((tile, i) => {
+    addTile(tile, centerX + tileW + gap + i * (tileW + gap), centerY, 'horizontal');
+  });
+
+  [...board.left].reverse().forEach((tile, i) => {
+    addTile(tile, centerX - tileW - gap - i * (tileW + gap), centerY, 'horizontal');
+  });
+
+  if (board.isFourDirectional) {
+    [...board.up].reverse().forEach((tile, i) => {
+      addTile(tile, centerX + 19, centerY - tileW - gap - i * (tileW + gap), 'vertical');
+    });
+
+    board.down.forEach((tile, i) => {
+      addTile(tile, centerX + 19, centerY + tileW + gap + i * (tileW + gap), 'vertical');
+    });
+  }
+
+  boardEl.style.width = '720px';
+  boardEl.style.height = '320px';
+}
 function renderHand(hand, board, isYourTurn) {
   const handEl = $('hand');
   handEl.innerHTML = '';
