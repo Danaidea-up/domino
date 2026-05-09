@@ -241,17 +241,47 @@ function placeTile(board, tile, direction) {
   if (tile.left !== end && tile.right !== end) return false;
   
   // Determine which side of the tile connects, and which is the outer end
-  let connecting, outer;
-  if (tile.left === end) {
-    connecting = tile.left;
-    outer = tile.right;
+  // We need to flip the tile if needed so that the CONNECTING side is visually
+  // toward the center, and the OUTER side is visually away from center.
+  let displayLeft, displayRight, connecting, outer;
+  
+  // For each direction, define which visual side faces the center:
+  // - 'right' branch: tile is placed to the right of center, so its LEFT side faces center
+  // - 'left' branch: tile is placed to the left of center, so its RIGHT side faces center
+  // - 'up' branch (vertical): tile's BOTTOM (right in data) faces center
+  // - 'down' branch (vertical): tile's TOP (left in data) faces center
+  
+  if (direction === 'right' || direction === 'down') {
+    // The LEFT side of the tile (visually) should match the connecting end
+    if (tile.left === end) {
+      displayLeft = tile.left;
+      displayRight = tile.right;
+    } else {
+      // Flip: put 'right' value on left side
+      displayLeft = tile.right;
+      displayRight = tile.left;
+    }
+    connecting = displayLeft;
+    outer = displayRight;
   } else {
-    connecting = tile.right;
-    outer = tile.left;
+    // direction === 'left' or 'up'
+    // The RIGHT side of the tile (visually) should match the connecting end
+    if (tile.right === end) {
+      displayLeft = tile.left;
+      displayRight = tile.right;
+    } else {
+      // Flip: put 'left' value on right side
+      displayLeft = tile.right;
+      displayRight = tile.left;
+    }
+    connecting = displayRight;
+    outer = displayLeft;
   }
   
   const placedTile = {
     ...tile,
+    left: displayLeft,    // visually displayed left
+    right: displayRight,  // visually displayed right
     _direction: direction,
     _connectingEnd: connecting,
     _outerEnd: outer,
@@ -358,7 +388,10 @@ function startRound(roomId, isFirstRound = false) {
     addChatMessage(roomId, null, `🎮 ڕاوندی ${room.round} دەستی پێکرد! ${room.players[playerIdx].name} یەکەم دانانە.`, true);
   } else {
     // Previous round winner picks any tile
-    const winnerIdx = room.players.findIndex(p => p.id === room.lastWinner);
+    // Match by sessionId first (survives reconnects), fallback to socket.id
+    const winnerIdx = room.players.findIndex(p => 
+      p.sessionId === room.lastWinner || p.id === room.lastWinner
+    );
     if (winnerIdx >= 0) {
       room.currentTurn = winnerIdx;
       room.chooseFirstTile = true;
@@ -523,7 +556,7 @@ function handleRoundEnd(roomId, winner, reason) {
     gameOver
   };
   room.started = false;
-  room.lastWinner = winner.id;
+  room.lastWinner = winner.sessionId || winner.id;
   
   if (gameOver) saveGameToDatabase(room, winner);
   
