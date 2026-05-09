@@ -1020,65 +1020,86 @@ function renderGame(state) {
 function renderBoard4Direction(board) {
   const boardEl = $('board');
   boardEl.innerHTML = '';
-
+  
   if (!board || !board.center) {
     boardEl.classList.add('empty');
-    boardEl.classList.remove('real-board');
     return;
   }
-
   boardEl.classList.remove('empty');
-  boardEl.classList.add('real-board');
-
-  const tileW = 76;
-  const gap = 6;
-  const centerX = 330;
-  const centerY = 145;
-
-  function addTile(tile, x, y, orientation, isCenter = false) {
-    const el = createTileElement(tile, orientation);
-    el.classList.add('board-tile-real');
-
-    if (isCenter) el.classList.add('center-tile');
-
-    el.style.left = x + 'px';
-    el.style.top = y + 'px';
-
-    boardEl.appendChild(el);
-  }
-
-  addTile(
-    board.center,
-    centerX,
-    centerY,
-    board.isFourDirectional ? 'vertical' : 'horizontal',
-    true
-  );
-
-  board.right.forEach((tile, i) => {
-    addTile(tile, centerX + tileW + gap + i * (tileW + gap), centerY, 'horizontal');
-  });
-
-  [...board.left].reverse().forEach((tile, i) => {
-    addTile(tile, centerX - tileW - gap - i * (tileW + gap), centerY, 'horizontal');
-  });
-
+  
+  const layout = document.createElement('div');
+  layout.className = `board-layout ${board.isFourDirectional ? 'four-dir' : 'two-dir'}`;
+  
   if (board.isFourDirectional) {
-    [...board.up].reverse().forEach((tile, i) => {
-      addTile(tile, centerX + 19, centerY - tileW - gap - i * (tileW + gap), 'vertical');
-    });
-
-    board.down.forEach((tile, i) => {
-      addTile(tile, centerX + 19, centerY + tileW + gap + i * (tileW + gap), 'vertical');
-    });
+    // 4-direction layout structure:
+    //   [up branch]      ← centered absolutely above the center tile
+    //   [left ← center → right]
+    //   [down branch]    ← centered absolutely below the center tile
+    //
+    // To position up/down ABOVE/BELOW just the center (not the whole row),
+    // we use position: relative on the middle row and absolute positioning for up/down,
+    // OR simpler: we make up/down their own flex rows but with same width as center
+    
+    // UP branch wrapper - just the up branch, centered
+    if (board.up.length > 0) {
+      const upBranch = document.createElement('div');
+      upBranch.className = 'branch branch-up';
+      [...board.up].reverse().forEach(t => upBranch.appendChild(createTileElement(t, 'vertical')));
+      layout.appendChild(upBranch);
+    }
+    
+    // Middle row (left + center + right)
+    const middleRow = document.createElement('div');
+    middleRow.className = 'branch-middle';
+    
+    const leftBranch = document.createElement('div');
+    leftBranch.className = 'branch branch-left';
+    board.left.forEach(t => leftBranch.appendChild(createTileElement(t, 'horizontal')));
+    middleRow.appendChild(leftBranch);
+    
+    const centerTile = createTileElement(board.center, 'horizontal');
+    centerTile.classList.add('center-tile');
+    middleRow.appendChild(centerTile);
+    
+    const rightBranch = document.createElement('div');
+    rightBranch.className = 'branch branch-right';
+    board.right.forEach(t => rightBranch.appendChild(createTileElement(t, 'horizontal')));
+    middleRow.appendChild(rightBranch);
+    
+    layout.appendChild(middleRow);
+    
+    // DOWN branch
+    if (board.down.length > 0) {
+      const downBranch = document.createElement('div');
+      downBranch.className = 'branch branch-down';
+      board.down.forEach(t => downBranch.appendChild(createTileElement(t, 'vertical')));
+      layout.appendChild(downBranch);
+    }
+    
+  } else {
+    // 2-direction layout: simple horizontal row [left ← center → right]
+    const leftBranch = document.createElement('div');
+    leftBranch.className = 'branch branch-left';
+    board.left.forEach(t => leftBranch.appendChild(createTileElement(t, 'horizontal')));
+    layout.appendChild(leftBranch);
+    
+    const centerTile = createTileElement(board.center, 'horizontal');
+    centerTile.classList.add('center-tile');
+    layout.appendChild(centerTile);
+    
+    const rightBranch = document.createElement('div');
+    rightBranch.className = 'branch branch-right';
+    board.right.forEach(t => rightBranch.appendChild(createTileElement(t, 'horizontal')));
+    layout.appendChild(rightBranch);
   }
-
-  boardEl.style.width = '720px';
-  boardEl.style.height = '320px';
+  
+  boardEl.appendChild(layout);
 }
+
 function renderHand(hand, board, isYourTurn) {
   const handEl = $('hand');
   handEl.innerHTML = '';
+  
   if (!hand || hand.length === 0) {
     handEl.innerHTML = '<div class="hand-empty">🎴 هیچ دۆمینۆیەکت نییە</div>';
     return;
@@ -1109,7 +1130,7 @@ function createTileElement(tile, orientation) {
 
 function createHandTile(tile, board, isYourTurn) {
   const div = document.createElement('div');
-  div.className = 'hand-tile';
+  div.className = 'hand-tile domino vertical'; // Add domino classes for shared styles
   div.dataset.tileId = tile.id;
   
   // First move OR chooseFirstTile - any tile is playable
@@ -1176,9 +1197,9 @@ function createPips(value) {
   let html = '';
   for (let i = 1; i <= 9; i++) {
     if (pips.includes(i)) {
-      html += '<div class="pip-cell"><div class="pip"></div></div>';
+      html += '<span class="pip-cell"><span class="pip"></span></span>';
     } else {
-      html += '<div class="pip-cell"></div>';
+      html += '<span class="pip-cell"></span>';
     }
   }
   return html;

@@ -473,83 +473,147 @@ body {
 .pc-score-pro { color: var(--gold); font-weight: 800; }
 
 /* ===== BOARD (4-DIRECTION KURDISH) ===== */
-..board-container-pro {
-  background: linear-gradient(
-    135deg,
-    rgba(0, 80, 50, 0.35),
-    rgba(0, 60, 40, 0.25)
-  );
-
+.board-container-pro {
+  background: linear-gradient(135deg, rgba(0, 80, 50, 0.4), rgba(0, 60, 40, 0.3));
   border: 2px solid rgba(0, 212, 170, 0.3);
-  border-radius: 18px;
-
-  padding: 10px;
-  margin-bottom: 10px;
-
-  min-height: 230px;
-  max-height: 270px;
-
+  border-radius: 16px;
+  padding: 8px;
+  min-height: 140px;
+  max-height: 200px;
   overflow: auto;
-}
-
-.board-pro {
-  position: relative;
-
-  min-width: 720px;
-  min-height: 320px;
-
-  display: block;
-}
-
-.board-pro.empty {
-  min-width: 100%;
-  min-height: 180px;
-
+  margin-bottom: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
-
+.board-pro {
+  width: 100%;
+  min-height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
 .board-pro.empty::before {
   content: '🎲 تەختەی بەتاڵ';
-
   color: var(--text-dim);
-
-  font-size: 1rem;
+  font-size: 0.95rem;
   font-weight: 700;
 }
-
 .board-pro.empty::after {
   content: 'یەکەم دۆمینۆ دابنێ';
-
   position: absolute;
-
-  bottom: 18px;
+  bottom: 16px;
   left: 50%;
-
   transform: translateX(-50%);
-
   color: var(--text-dim);
-
   font-size: 0.75rem;
+  white-space: nowrap;
 }
 
-.board-tile-real {
-  position: absolute;
-
-  transition:
-    left 0.25s ease,
-    top 0.25s ease,
-    transform 0.25s ease;
+/* 4-direction board layout */
+.board-layout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: max-content;
+  padding: 12px;
+  position: relative;
+}
+.board-layout.two-dir {
+  flex-direction: row;
+  flex-wrap: nowrap;
+  padding: 8px;
+  gap: 1px;
 }
 
-.real-board {
-  overflow: visible;
+/* 4-direction layout - up/down branches need to align with the CENTER tile,
+   not the entire middle row. We use position:relative on middle row and
+   the up/down branches use the same alignment via flex order. */
+.board-layout.four-dir {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  gap: 1px;
+}
+
+.branch { 
+  display: flex; 
+  align-items: center; 
+  justify-content: center;
+}
+
+/* Vertical branches stack vertically */
+.branch-up,
+.branch-down {
+  flex-direction: column;
+  gap: 1px;
+}
+.board-layout.four-dir .branch-up {
+  margin-bottom: 1px;
+}
+.board-layout.four-dir .branch-down {
+  margin-top: 1px;
+}
+
+/* The middle row contains left + center + right.
+   To make up/down branches align with CENTER (not middle row center),
+   we need a special structure. */
+.branch-middle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: nowrap;
+  gap: 1px;
+  flex-direction: row;
+  position: relative;
+}
+
+/* Branches in middle row - use equal flex-basis so center stays in middle */
+.board-layout.four-dir .branch-middle {
+  align-items: center;
+}
+.board-layout.four-dir .branch-middle .branch-left {
+  flex: 1 1 0;
+  flex-direction: row-reverse;
+  gap: 1px;
+  justify-content: flex-start;
+  min-width: 0;
+}
+.board-layout.four-dir .branch-middle .branch-right {
+  flex: 1 1 0;
+  flex-direction: row;
+  gap: 1px;
+  justify-content: flex-start;
+  min-width: 0;
+}
+
+/* For 2-dir layout */
+.board-layout.two-dir .branch-left {
+  flex-direction: row-reverse;
+  gap: 1px;
+}
+.board-layout.two-dir .branch-right {
+  flex-direction: row;
+  gap: 1px;
 }
 
 .center-tile {
-  margin: 2px;
   box-shadow: 0 0 12px rgba(255, 215, 0, 0.5), 0 4px 10px rgba(0,0,0,0.5);
+  position: relative;
+  z-index: 2;
+  margin: 0 2px;
+}
+
+.vert-wrapper {
+  display: flex;
+  width: 100%;
+  justify-content: center;
+  align-items: center;
 }
 
 /* Domino tiles on board */
@@ -584,30 +648,45 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
+  height: 100%;
 }
 .domino .pip {
   width: 6px; height: 6px;
   background: #1a1a1a;
   border-radius: 50%;
   box-shadow: inset 0 1px 1px rgba(255,255,255,0.2);
+  display: block;
 }
 
 /* Hand area */
 .hand-area-pro {
-  background: var(--glass); backdrop-filter: blur(15px);
+  background: var(--glass); 
+  backdrop-filter: blur(15px);
   border: 1px solid var(--glass-border);
-  border-radius: 16px; padding: 12px; margin-bottom: 10px;
-  min-height: 120px;
+  border-radius: 16px; 
+  padding: 14px 10px; 
+  margin-bottom: 10px;
+  min-height: 140px;
 }
-.hand-title-pro { text-align: center; font-size: 0.9rem; margin-bottom: 10px; color: var(--text-dim); }
+.hand-title-pro { 
+  text-align: center; 
+  font-size: 0.9rem; 
+  margin-bottom: 12px; 
+  color: var(--text-dim); 
+}
 .hand-pro {
-  display: flex; flex-wrap: nowrap; gap: 8px;
-  overflow-x: auto; overflow-y: visible;
-  padding: 12px 4px;
+  display: flex !important; 
+  flex-wrap: nowrap; 
+  gap: 8px;
+  overflow-x: auto; 
+  overflow-y: visible;
+  padding: 18px 8px 14px;
   scrollbar-width: thin;
-  min-height: 100px;
+  min-height: 110px;
   align-items: center;
   justify-content: flex-start;
+  -webkit-overflow-scrolling: touch;
 }
 .hand-pro::-webkit-scrollbar { height: 6px; }
 .hand-pro::-webkit-scrollbar-thumb { background: var(--glass-strong); border-radius: 3px; }
@@ -615,42 +694,57 @@ body {
   width: 100%; text-align: center; color: var(--text-dim);
   font-size: 0.85rem; padding: 20px;
 }
+
+/* IMPORTANT: hand-tile overrides .domino dimensions for hand display */
 .hand-tile {
-  width: 56px; height: 100px; flex-shrink: 0;
-  background: linear-gradient(135deg, #ffffff, #e8e8e8);
-  border-radius: 8px;
-  display: flex; flex-direction: column;
-  border: 2px solid #888;
+  width: 52px !important; 
+  height: 92px !important; 
+  flex-shrink: 0 !important;
+  background: linear-gradient(135deg, #ffffff 0%, #e8e8e8 100%) !important;
+  border-radius: 8px !important;
+  display: flex !important; 
+  flex-direction: column !important;
+  border: 2px solid #666 !important;
   box-shadow: 0 4px 10px rgba(0,0,0,0.5), inset 0 1px 2px rgba(255,255,255,0.8);
-  cursor: pointer; transition: all 0.2s;
+  cursor: pointer; 
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
 }
 .hand-tile .domino-half {
-  flex: 1;
+  flex: 1 1 50%;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: repeat(3, 1fr);
   gap: 0;
-  padding: 6px;
+  padding: 4px;
   position: relative;
+  min-height: 0;
+  border: none;
+  width: 100%;
+  box-sizing: border-box;
 }
 .hand-tile .domino-half:first-child {
-  border-bottom: 2px solid #444;
+  border-bottom: 2px solid #444 !important;
+  border-left: none !important;
 }
-.pip-cell {
+.hand-tile .pip-cell {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
+  height: 100%;
 }
 .hand-tile .pip {
-  width: 8px; height: 8px;
+  width: 7px; 
+  height: 7px;
   background: #1a1a1a;
   border-radius: 50%;
-  box-shadow: inset 0 1px 1px rgba(255,255,255,0.2);
+  box-shadow: inset 0 1px 1px rgba(255,255,255,0.2), 0 1px 1px rgba(0,0,0,0.3);
+  display: block;
 }
 .hand-tile.playable {
-  border-color: #00d4aa;
+  border-color: #00d4aa !important;
   box-shadow: 0 4px 14px rgba(0,212,170,0.6), inset 0 0 0 1px #00d4aa;
 }
 .hand-tile.playable::before {
@@ -668,23 +762,23 @@ body {
   50% { opacity: 0.5; }
 }
 .hand-tile.disabled {
-  opacity: 0.55;
+  opacity: 0.7;
   cursor: not-allowed;
-  filter: grayscale(0.4);
 }
 .hand-tile.selected {
   transform: translateY(-12px) scale(1.08);
-  border-color: #ffd700;
+  border-color: #ffd700 !important;
   box-shadow: 0 10px 24px rgba(255,215,0,0.7), 0 0 0 3px #ffd700;
   z-index: 10;
 }
 .hand-tile.hand-double::after {
   content: '⭐';
   position: absolute;
-  top: -8px;
+  top: -10px;
   right: -8px;
-  font-size: 0.9rem;
-  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
+  font-size: 0.95rem;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.7));
+  z-index: 2;
 }
 .hand-tile:active:not(.disabled) { transform: scale(0.96); }
 .hand-tile.selected:active { transform: translateY(-10px) scale(1.04); }
