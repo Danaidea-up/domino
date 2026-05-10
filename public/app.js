@@ -911,6 +911,12 @@ function renderGame(state) {
   $('openSumValue').textContent = openSum;
   $('openSumValue').style.color = (openSum > 0 && openSum % 5 === 0) ? '#ffd700' : 'var(--text)';
   
+  // Vertical-unlock notice
+  const vertNotice = $('vertUnlockNotice');
+  if (vertNotice) {
+    vertNotice.style.display = (state.verticalUnlocked && state.board?.isFourDirectional) ? 'block' : 'none';
+  }
+  
   // Turn timer
   if (state.yourTurn && state.turnDeadline) {
     updateTurnTimer(state.turnDeadline);
@@ -1094,7 +1100,57 @@ function renderBoard4Direction(board) {
   }
   
   boardEl.appendChild(layout);
+  
+  // Auto-scale board to fit container if it's too big
+  // This prevents tiles from being clipped/lost when chains get long
+  requestAnimationFrame(() => {
+    autoScaleBoard(boardEl, layout);
+  });
 }
+
+// Automatically scale the board down so all tiles fit visibly
+function autoScaleBoard(boardEl, layout) {
+  if (!boardEl || !layout) return;
+  
+  // Reset scale first to measure natural size
+  boardEl.style.transform = '';
+  
+  const container = boardEl.parentElement; // .board-container-pro
+  if (!container) return;
+  
+  const containerWidth = container.clientWidth - 16; // padding
+  const containerHeight = container.clientHeight - 16;
+  
+  const layoutWidth = layout.scrollWidth;
+  const layoutHeight = layout.scrollHeight;
+  
+  if (layoutWidth <= 0 || layoutHeight <= 0) return;
+  
+  // Calculate scale factor (use the smaller dimension to fit fully)
+  const scaleX = containerWidth / layoutWidth;
+  const scaleY = containerHeight / layoutHeight;
+  let scale = Math.min(scaleX, scaleY, 1); // Never scale up, only down
+  
+  // Don't go below 35% (would be unreadable)
+  scale = Math.max(scale, 0.35);
+  
+  if (scale < 0.99) {
+    boardEl.style.transform = `scale(${scale})`;
+  } else {
+    boardEl.style.transform = '';
+  }
+}
+
+// Re-scale on window resize (orientation change, etc.)
+let resizeTimer = null;
+window.addEventListener('resize', () => {
+  if (resizeTimer) clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    const boardEl = $('board');
+    const layout = boardEl?.querySelector('.board-layout');
+    if (boardEl && layout) autoScaleBoard(boardEl, layout);
+  }, 200);
+});
 
 function renderHand(hand, board, isYourTurn) {
   const handEl = $('hand');
@@ -1144,10 +1200,14 @@ function createHandTile(tile, board, isYourTurn) {
     if (isFirstMove || chooseFirst) {
       isPlayable = true;
     } else {
+      const verticalUnlocked = STATE.gameState?.verticalUnlocked || false;
       // Check each direction
       ['right','left','up','down'].forEach(dir => {
         const end = board.ends && board.ends[dir];
         if (end !== null && end !== undefined) {
+          // Vertical branches require unlock
+          if ((dir === 'up' || dir === 'down') && !verticalUnlocked) return;
+          
           if (tile.left === end || tile.right === end) {
             validDirections[dir] = true;
             isPlayable = true;
@@ -1249,10 +1309,12 @@ function playSelectedTile(direction) {
 function checkAnyPlayable(hand, board) {
   if (!board || !board.center) return true;
   if (STATE.gameState?.chooseFirstTile) return true;
+  const verticalUnlocked = STATE.gameState?.verticalUnlocked || false;
   return hand.some(t => {
     return ['right','left','up','down'].some(dir => {
       const end = board.ends && board.ends[dir];
       if (end === null || end === undefined) return false;
+      if ((dir === 'up' || dir === 'down') && !verticalUnlocked) return false;
       return t.left === end || t.right === end;
     });
   });
