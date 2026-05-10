@@ -190,7 +190,39 @@ function calculateOpenEndsSum(board) {
 }
 
 // Check if tile can be played at a specific direction
-function canPlayAt(tile, board, direction) {
+// Check if up/down branches are "unlocked" (per Kurdish rule)
+// Up/down branches only open when LEFT or RIGHT branch is BLOCKED
+// (i.e., no tile in the entire game can connect to that side anymore)
+function areVerticalBranchesUnlocked(board, allHands) {
+  if (!board.isFourDirectional) return false;
+  
+  // Check if any player can still play on left or right
+  // We need to check ALL tiles in all hands + remaining boneyard
+  // For simplicity, check if the right/left ends could ever be played
+  // by checking if any tile in any hand matches
+  
+  const leftEnd = board.ends.left;
+  const rightEnd = board.ends.right;
+  
+  let someoneCanPlayLeft = false;
+  let someoneCanPlayRight = false;
+  
+  if (allHands) {
+    for (const hand of allHands) {
+      for (const tile of hand) {
+        if (tile.left === leftEnd || tile.right === leftEnd) someoneCanPlayLeft = true;
+        if (tile.left === rightEnd || tile.right === rightEnd) someoneCanPlayRight = true;
+        if (someoneCanPlayLeft && someoneCanPlayRight) break;
+      }
+      if (someoneCanPlayLeft && someoneCanPlayRight) break;
+    }
+  }
+  
+  // If both left AND right are blocked, vertical branches open
+  return !someoneCanPlayLeft && !someoneCanPlayRight;
+}
+
+function canPlayAt(tile, board, direction, allHands) {
   if (!board.center) return true; // First move - any tile, any direction (only "right" used as default)
   
   const end = board.ends[direction];
@@ -202,11 +234,18 @@ function canPlayAt(tile, board, direction) {
     return false;
   }
   
+  // Kurdish rule: Up/down branches only open when both left AND right are blocked
+  if ((direction === 'up' || direction === 'down') && allHands) {
+    if (!areVerticalBranchesUnlocked(board, allHands)) {
+      return false;
+    }
+  }
+  
   return tile.left === end || tile.right === end;
 }
 
 // Get all valid moves for a tile
-function getValidMoves(tile, board) {
+function getValidMoves(tile, board, allHands) {
   const moves = [];
   if (!board.center) {
     moves.push({ direction: 'first', tile });
@@ -214,16 +253,16 @@ function getValidMoves(tile, board) {
   }
   
   ['right', 'left', 'up', 'down'].forEach(dir => {
-    if (canPlayAt(tile, board, dir)) {
+    if (canPlayAt(tile, board, dir, allHands)) {
       moves.push({ direction: dir, tile });
     }
   });
   return moves;
 }
 
-function playerCanPlay(hand, board) {
+function playerCanPlay(hand, board, allHands) {
   if (!board.center) return true;
-  return hand.some(t => getValidMoves(t, board).length > 0);
+  return hand.some(t => getValidMoves(t, board, allHands).length > 0);
 }
 
 // Place a tile on the board
@@ -441,6 +480,7 @@ function broadcastGameState(roomId) {
     teamScores: room.teams ? { team1: room.scores.team1, team2: room.scores.team2 } : null,
     chooseFirstTile: room.chooseFirstTile,
     openEndsSum: calculateOpenEndsSum(room.board),
+    verticalUnlocked: room.board.center ? areVerticalBranchesUnlocked(room.board, [...room.players.map(p => p.hand), room.boneyard]) : false,
     players: room.players.map(p => ({
       id: p.id, name: p.name, avatar: p.avatar, level: p.level || 1,
       isBot: p.isBot, tilesCount: p.hand.length, connected: p.connected,
@@ -473,7 +513,8 @@ function checkRoundEnd(roomId) {
   }
   
   // Blocked game
-  const allBlocked = room.players.every(p => !playerCanPlay(p.hand, room.board));
+  const allHands = [...room.players.map(p => p.hand), room.boneyard];
+  const allBlocked = room.players.every(p => !playerCanPlay(p.hand, room.board, allHands));
   if (allBlocked && room.boneyard.length === 0) {
     // Find player(s) with lowest pip count
     let minPips = Infinity;
@@ -592,10 +633,13 @@ async function saveGameToDatabase(room, winner) {
 
 // ===== AI =====
 function aiSelectMove(player, board, difficulty, room) {
+  // Build allHands for vertical-branch logic
+  const allHands = room ? [...room.players.map(p => p.hand), room.boneyard || []] : null;
+  
   // Get all valid moves across all tiles and directions
   const allMoves = [];
   for (const tile of player.hand) {
-    const moves = getValidMoves(tile, board);
+    const moves = getValidMoves(tile, board, allHands);
     moves.forEach(m => allMoves.push(m));
   }
   
@@ -797,9 +841,11 @@ function autoActionForTimeout(roomId) {
   const player = room.players[room.currentTurn];
   if (!player || player.isBot) return;
   
+  const allHands = [...room.players.map(p => p.hand), room.boneyard];
+  
   // Try to play any valid move
   for (const tile of player.hand) {
-    const moves = getValidMoves(tile, room.board);
+    const moves = getValidMoves(tile, room.board, allHands);
     if (moves.length > 0) {
       const move = moves[0];
       const tileIdx = player.hand.findIndex(t => t.id === tile.id);
@@ -1173,7 +1219,17 @@ io.on('connection', (socket) => {
     if (!direction || !['right','left','up','down'].includes(direction)) {
       return socket.emit('error', { message: 'ئاراستە دیاری بکە!' });
     }
-    if (!canPlayAt(tile, room.board, direction)) {
+    
+    // Get all hands + boneyard for vertical-branch unlock check
+    const allHands = [...room.players.map(p => p.hand), room.boneyard];
+    
+    if (!canPlayAt(tile, room.board, direction, allHands)) {
+      // Special message if trying to play vertical when not unlocked
+      if ((direction === 'up' || direction === 'down') && room.board.isFourDirectional) {
+        if (!areVerticalBranchesUnlocked(room.board, allHands)) {
+          return socket.emit('error', { message: 'سەرەوە/خوارەوە کراوە نییە! یەکەم لای چەپ و ڕاست پڕ بکە' });
+        }
+      }
       return socket.emit('error', { message: 'ئەو دۆمینۆیە لەو ئاراستەیە ناگونجێت!' });
     }
     
@@ -1211,7 +1267,8 @@ io.on('connection', (socket) => {
       player.hand.push(tile);
       drawnCount++;
       // Check if this tile is playable
-      if (getValidMoves(tile, room.board).length > 0) break;
+      const allHands = [...room.players.map(p => p.hand), room.boneyard];
+      if (getValidMoves(tile, room.board, allHands).length > 0) break;
     }
     
     room.lastMove = { playerId: socket.id, action: 'draw', drawnCount };
@@ -1229,7 +1286,7 @@ io.on('connection', (socket) => {
     if (playerIdx !== room.currentTurn) return;
     const player = room.players[playerIdx];
     if (room.boneyard.length > 0) return socket.emit('error', { message: 'سەرەتا لە بانک وەربگرە!' });
-    if (playerCanPlay(player.hand, room.board)) return socket.emit('error', { message: 'دۆمینۆی گونجاوت هەیە!' });
+    if (playerCanPlay(player.hand, room.board, [...room.players.map(p => p.hand), room.boneyard])) return socket.emit('error', { message: 'دۆمینۆی گونجاوت هەیە!' });
     
     room.passes = (room.passes || 0) + 1;
     room.lastMove = { playerId: socket.id, action: 'pass' };
