@@ -50,19 +50,97 @@ async function init() {
   loadHistory();
   applySettings();
   applyLanguage(STATE.settings.language || 'ckb');
-  renderProfile();
-  renderResources();
   setupEventListeners();
   setupSocketListeners();
+  setupAuthListeners();
   setupParticles();
   
   setTimeout(() => $('splash').classList.add('hide'), 1200);
-  setTimeout(checkDailyReward, 1500);
+  
+  // Check authentication status
+  await checkAuthAndRoute();
+}
+
+// Check if user has saved auth token, decide which screen to show
+async function checkAuthAndRoute() {
+  // Check Google auth config
+  try {
+    const res = await fetch('/api/auth/status');
+    const data = await res.json();
+    STATE.googleEnabled = data.googleEnabled;
+    STATE.googleClientId = data.googleClientId;
+    
+    if (data.googleEnabled && data.googleClientId) {
+      // Configure Google Sign-In
+      const onloadDiv = document.getElementById('g_id_onload');
+      if (onloadDiv) onloadDiv.setAttribute('data-client_id', data.googleClientId);
+      $('googleSignInWrapper').style.display = 'flex';
+    }
+  } catch (err) {
+    console.warn('Auth status check failed:', err);
+    STATE.googleEnabled = false;
+  }
+  
+  // Check for saved JWT token
+  const token = localStorage.getItem('domino_token');
+  if (token) {
+    // Verify token with server
+    try {
+      const res = await fetch('/api/auth/me', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        STATE.googleToken = token;
+        STATE.googleUser = data.user;
+        // Apply Google user data to profile
+        STATE.profile.name = data.user.name;
+        STATE.profile.googlePicture = data.user.picture;
+        STATE.profile.isGoogleUser = true;
+        saveProfile();
+        showScreen('homeScreen');
+        renderProfile();
+        renderResources();
+        setTimeout(checkDailyReward, 1500);
+        connectSocket();
+        return;
+      } else {
+        // Token invalid - clear it
+        localStorage.removeItem('domino_token');
+      }
+    } catch (err) {
+      console.warn('Token verification failed:', err);
+    }
+  }
+  
+  // Check if guest user already has profile
+  const hasGuestProfile = localStorage.getItem('domino_session');
+  if (hasGuestProfile && STATE.profile.name && STATE.profile.name !== 'یاریزان') {
+    // Returning guest - go straight to home
+    showScreen('homeScreen');
+    renderProfile();
+    renderResources();
+    setTimeout(checkDailyReward, 1500);
+    connectSocket();
+    return;
+  }
+  
+  // First-time user - show login screen
+  showScreen('loginScreen');
+}
+
+// Connect to socket (called after login decision)
+function connectSocket() {
+  if (STATE.socketConnected) return;
+  STATE.socketConnected = true;
   
   socket.on('connect', () => {
     socket.emit('initSession', {
-      sessionId: STATE.sessionId, playerName: STATE.profile.name,
-      avatar: STATE.profile.avatar, level: STATE.profile.level
+      sessionId: STATE.sessionId,
+      playerName: STATE.profile.name,
+      avatar: STATE.profile.avatar,
+      level: STATE.profile.level,
+      token: STATE.googleToken || null
     });
     
     const params = new URLSearchParams(window.location.search);
@@ -79,6 +157,17 @@ async function init() {
     }
   });
   
+  // Trigger connection if already connected
+  if (socket.connected) {
+    socket.emit('initSession', {
+      sessionId: STATE.sessionId,
+      playerName: STATE.profile.name,
+      avatar: STATE.profile.avatar,
+      level: STATE.profile.level,
+      token: STATE.googleToken || null
+    });
+  }
+  
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     STATE.pwaPrompt = e;
@@ -87,6 +176,109 @@ async function init() {
   if (window.matchMedia('(display-mode: standalone)').matches) {
     $('pwaInstalledText').style.display = 'block';
   }
+}
+
+// ===== AUTH HANDLERS =====
+function setupAuthListeners() {
+  // Continue as Guest
+  $('continueAsGuestBtn').onclick = () => {
+    // Set up basic guest profile
+    if (!STATE.profile.name || STATE.profile.name === 'یاریزان') {
+      // Generate a fun guest name
+      const guestNames = ['میوان', 'یاریزانی نوێ', 'دۆستی نوێ'];
+      STATE.profile.name = guestNames[Math.floor(Math.random() * guestNames.length)];
+      saveProfile();
+    }
+    showScreen('homeScreen');
+    renderProfile();
+    renderResources();
+    setTimeout(checkDailyReward, 1500);
+    connectSocket();
+    showToast('👋 بە خێر بێیت وەک میوان!');
+  };
+  
+  // Logout
+  const logoutBtn = $('logoutBtn');
+  if (logoutBtn) {
+    logoutBtn.onclick = handleLogout;
+  }
+}
+
+// Global callback for Google Sign-In (called by Google's library)
+window.handleGoogleSignIn = async (response) => {
+  if (!response || !response.credential) {
+    showToast('چوونەژوور سەرنەکەوت', 'error');
+    return;
+  }
+  
+  try {
+    showToast('⏳ پشتڕاستکردنەوە...');
+    
+    const res = await fetch('/api/auth/google', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken: response.credential })
+    });
+    
+    if (!res.ok) throw new Error('Auth failed');
+    
+    const data = await res.json();
+    
+    // Save token
+    STATE.googleToken = data.token;
+    localStorage.setItem('domino_token', data.token);
+    STATE.googleUser = data.user;
+    
+    // Update profile from Google data
+    STATE.profile.name = data.user.name;
+    STATE.profile.googlePicture = data.user.picture;
+    STATE.profile.isGoogleUser = true;
+    STATE.profile.email = data.user.email;
+    
+    // Sync from DB if available
+    if (data.user.level) STATE.profile.level = data.user.level;
+    if (data.user.xp) STATE.profile.xp = data.user.xp;
+    if (data.user.coins) STATE.profile.coins = data.user.coins;
+    if (data.user.gems) STATE.profile.gems = data.user.gems;
+    if (data.user.stats) STATE.profile.stats = data.user.stats;
+    if (data.user.avatar) STATE.profile.avatar = data.user.avatar;
+    if (data.user.sessionId) {
+      STATE.sessionId = data.user.sessionId;
+      localStorage.setItem('domino_session', data.user.sessionId);
+    }
+    
+    saveProfile();
+    
+    showToast(`✅ بە خێر بێیت ${data.user.name}!`);
+    showScreen('homeScreen');
+    renderProfile();
+    renderResources();
+    setTimeout(checkDailyReward, 1500);
+    connectSocket();
+  } catch (err) {
+    console.error('Google sign-in error:', err);
+    showToast('چوونەژوور سەرنەکەوت', 'error');
+  }
+};
+
+async function handleLogout() {
+  if (!confirm('دڵنیایت دەتەوێت دەرچیت؟')) return;
+  
+  try {
+    await fetch('/api/auth/logout', { method: 'POST' });
+  } catch (err) {}
+  
+  // Clear all auth data
+  localStorage.removeItem('domino_token');
+  STATE.googleToken = null;
+  STATE.googleUser = null;
+  STATE.profile.isGoogleUser = false;
+  STATE.profile.googlePicture = null;
+  saveProfile();
+  
+  // Reload to clear state
+  showToast('👋 بە سەلامەتی!');
+  setTimeout(() => location.reload(), 1000);
 }
 
 // ===== PROFILE =====
@@ -111,7 +303,16 @@ function saveProfile() {
 
 function renderProfile() {
   const p = STATE.profile;
-  $('pillAvatar').textContent = p.avatar;
+  
+  // Show Google picture if available, else emoji avatar
+  const useGooglePic = p.isGoogleUser && p.googlePicture;
+  
+  if (useGooglePic) {
+    $('pillAvatar').innerHTML = `<img src="${escapeAttr(p.googlePicture)}" alt="${escapeAttr(p.name)}" referrerpolicy="no-referrer">`;
+  } else {
+    $('pillAvatar').textContent = p.avatar;
+  }
+  
   $('pillName').textContent = p.name;
   $('pillLevel').textContent = p.level;
   
@@ -120,7 +321,11 @@ function renderProfile() {
   const xpProgress = ((p.xp - xpForCurrent) / (xpForNext - xpForCurrent)) * 100;
   $('pillXP').style.width = Math.max(0, Math.min(100, xpProgress)) + '%';
   
-  $('phAvatar').textContent = p.avatar;
+  if (useGooglePic) {
+    $('phAvatar').innerHTML = `<img src="${escapeAttr(p.googlePicture)}" alt="${escapeAttr(p.name)}" referrerpolicy="no-referrer">`;
+  } else {
+    $('phAvatar').textContent = p.avatar;
+  }
   $('phName').textContent = p.name;
   $('phLevel').textContent = p.level;
   $('phXP').style.width = Math.max(0, Math.min(100, xpProgress)) + '%';
@@ -132,6 +337,38 @@ function renderProfile() {
   $('statGames').textContent = s.games;
   const winRate = s.games > 0 ? Math.round((s.wins / s.games) * 100) : 0;
   $('statWinRate').textContent = winRate + '%';
+  
+  // Update account info card in settings
+  const accountCard = $('accountInfoCard');
+  if (accountCard) {
+    accountCard.style.display = 'block';
+    
+    if (useGooglePic) {
+      $('accountAvatar').innerHTML = `<img src="${escapeAttr(p.googlePicture)}" alt="${escapeAttr(p.name)}" referrerpolicy="no-referrer">`;
+    } else {
+      $('accountAvatar').textContent = p.avatar;
+    }
+    
+    $('accountName').textContent = p.name;
+    
+    if (p.isGoogleUser) {
+      $('accountEmail').textContent = p.email || '';
+      $('accountEmail').style.display = p.email ? 'block' : 'none';
+      $('accountBadge').textContent = '🔐 ئەکاونتی Google';
+      $('accountBadge').className = 'account-badge google';
+      $('logoutBtn').style.display = 'flex';
+      $('logoutBtn').textContent = '🚪 دەرچوون لە Google';
+    } else {
+      $('accountEmail').style.display = 'none';
+      $('accountBadge').textContent = '👤 میوان';
+      $('accountBadge').className = 'account-badge';
+      $('logoutBtn').style.display = 'none';
+    }
+  }
+}
+
+function escapeAttr(s) {
+  return String(s || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;');
 }
 
 function renderResources() {
@@ -579,7 +816,10 @@ function setupEventListeners() {
   $('resetAllBtn').onclick = () => {
     if (confirm('⚠️ هەموو شت دەسڕێتەوە! دڵنیایت؟')) {
       localStorage.clear();
-      location.reload();
+      // Also logout from server
+      fetch('/api/auth/logout', { method: 'POST' }).finally(() => {
+        location.reload();
+      });
     }
   };
 }
@@ -587,19 +827,48 @@ function setupEventListeners() {
 function openProfile() {
   renderAvatarGrid();
   $('nameInput').value = STATE.profile.name;
+  
+  // Disable name change for Google users
+  if (STATE.profile.isGoogleUser) {
+    $('nameInput').disabled = true;
+    $('nameInput').style.opacity = '0.6';
+    $('nameInput').title = 'ناو لە ئەکاونتی Google دێت';
+    // Show note
+    let note = document.getElementById('googleNameNote');
+    if (!note) {
+      note = document.createElement('div');
+      note.id = 'googleNameNote';
+      note.style.cssText = 'font-size:0.78rem; color:var(--text-dim); margin-top:6px; padding:8px; background:var(--glass-strong); border-radius:8px;';
+      note.innerHTML = '🔐 ناوەکەت لە Google دێت و ناتوانرێت بگۆڕدرێت';
+      $('nameInput').parentNode.appendChild(note);
+    }
+    note.style.display = 'block';
+  } else {
+    $('nameInput').disabled = false;
+    $('nameInput').style.opacity = '';
+    const note = document.getElementById('googleNameNote');
+    if (note) note.style.display = 'none';
+  }
+  
   $('profilePanel').classList.add('active');
 }
 
 function saveProfileChanges() {
-  const name = $('nameInput').value.trim();
-  if (name) STATE.profile.name = name;
+  // Google users can only change avatar
+  if (!STATE.profile.isGoogleUser) {
+    const name = $('nameInput').value.trim();
+    if (name) STATE.profile.name = name;
+  }
   saveProfile();
   renderProfile();
   $('profilePanel').classList.remove('active');
   showToast('✅ پاراست');
   socket.emit('initSession', {
-    sessionId: STATE.sessionId, playerName: STATE.profile.name,
-    avatar: STATE.profile.avatar, level: STATE.profile.level
+    sessionId: STATE.sessionId, 
+    playerName: STATE.profile.name,
+    avatar: STATE.profile.avatar, 
+    level: STATE.profile.level,
+    token: STATE.googleToken || null
   });
 }
 

@@ -513,7 +513,190 @@ body {
   white-space: nowrap;
 }
 
-/* Vertical-unlocked notice */
+/* ===== LOGIN SCREEN ===== */
+#loginScreen {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 20px;
+  text-align: center;
+}
+#loginScreen.active {
+  display: flex;
+}
+
+.login-hero {
+  margin-bottom: 30px;
+}
+.login-logo {
+  font-size: 5rem;
+  margin-bottom: 10px;
+  animation: pulse 2s ease-in-out infinite;
+  filter: drop-shadow(0 4px 16px rgba(240, 147, 251, 0.4));
+}
+.login-title {
+  font-size: 2.4rem;
+  font-weight: 900;
+  background: linear-gradient(135deg, var(--primary), var(--primary-2), var(--secondary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 6px;
+}
+.login-subtitle {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 360px;
+  background: var(--glass);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  border-radius: 22px;
+  padding: 24px 20px;
+  margin-bottom: 20px;
+}
+.login-card-title {
+  font-size: 1rem;
+  font-weight: 800;
+  margin-bottom: 18px;
+  color: var(--gold);
+}
+
+.google-signin-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.login-divider {
+  width: 100%;
+  text-align: center;
+  position: relative;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  margin: 4px 0;
+}
+.login-divider::before,
+.login-divider::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: calc(50% - 30px);
+  height: 1px;
+  background: var(--glass-border);
+}
+.login-divider::before { right: 0; }
+.login-divider::after { left: 0; }
+.login-divider span {
+  background: var(--bg-2);
+  padding: 0 12px;
+}
+
+.btn-guest {
+  background: var(--glass-strong);
+  border: 1px solid var(--glass-border);
+  color: var(--text);
+}
+
+.login-info {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--glass-border);
+}
+.login-feature {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: right;
+  padding: 6px 0;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+.lf-icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.login-footer {
+  color: var(--text-dim);
+  font-size: 0.7rem;
+  margin-top: 10px;
+}
+
+/* Account info card in settings */
+.account-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+}
+.account-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary), var(--primary-2));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.8rem;
+  flex-shrink: 0;
+  overflow: hidden;
+  border: 2px solid var(--glass-border);
+}
+.account-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.account-details {
+  flex: 1;
+  text-align: right;
+}
+.account-name {
+  font-weight: 800;
+  font-size: 1rem;
+  margin-bottom: 2px;
+}
+.account-email {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+  word-break: break-all;
+}
+.account-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: var(--glass-strong);
+  color: var(--text-dim);
+}
+.account-badge.google {
+  background: linear-gradient(135deg, #4285f4, #34a853);
+  color: #fff;
+}
+
+/* Pill avatar with image (for Google users) */
+.pill-avatar img,
+.ph-avatar img,
+.pc-avatar-pro img,
+.slot-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+/* ===== END LOGIN ===== */
+
+
 .vert-unlock-notice {
   background: linear-gradient(135deg, rgba(0, 212, 170, 0.15), rgba(0, 200, 150, 0.1));
   border: 1px solid rgba(0, 212, 170, 0.4);

@@ -9,6 +9,7 @@
 <title>🎲 دۆمینۆی کوردی</title>
 <link rel="manifest" href="/manifest.json">
 <link rel="stylesheet" href="/style.css">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body data-theme="cosmic">
 
@@ -26,8 +27,65 @@
 
 <div class="app">
 
+<!-- LOGIN SCREEN -->
+<div class="screen" id="loginScreen">
+  <div class="login-hero">
+    <div class="login-logo">🎲</div>
+    <h1 class="login-title">دۆمینۆی <span class="title-accent">کوردی</span></h1>
+    <p class="login-subtitle">یاسا کوردیە تایبەتەکان · ٢-٤ یاریزان · تیمی</p>
+  </div>
+  
+  <div class="login-card">
+    <div class="login-card-title">🚀 دەستپێکردن</div>
+    
+    <!-- Google Sign-In button (will be inserted by JS) -->
+    <div id="googleSignInWrapper" class="google-signin-wrapper" style="display:none;">
+      <div id="g_id_onload"
+           data-context="signin"
+           data-ux_mode="popup"
+           data-callback="handleGoogleSignIn"
+           data-auto_prompt="false">
+      </div>
+      <div class="g_id_signin"
+           data-type="standard"
+           data-shape="pill"
+           data-theme="filled_black"
+           data-text="signin_with"
+           data-size="large"
+           data-logo_alignment="left"
+           data-width="280">
+      </div>
+      <div class="login-divider">
+        <span>یان</span>
+      </div>
+    </div>
+    
+    <button class="btn-pro btn-guest" id="continueAsGuestBtn">
+      <span style="font-size:1.4rem;">👤</span>
+      <span>وەک میوان (بێ ئەکاونت)</span>
+    </button>
+    
+    <div class="login-info">
+      <div class="login-feature">
+        <span class="lf-icon">☁️</span>
+        <span>ئەکاونتی Google: یاری لە هەموو ئامێر</span>
+      </div>
+      <div class="login-feature">
+        <span class="lf-icon">🏆</span>
+        <span>پاراستنی خاڵ، ئاست، نیشانە</span>
+      </div>
+      <div class="login-feature">
+        <span class="lf-icon">🔒</span>
+        <span>پارێزراو لە Google</span>
+      </div>
+    </div>
+  </div>
+  
+  <p class="login-footer">دۆمینۆی کوردی · v2.0 🌍</p>
+</div>
+
 <!-- HOME -->
-<div class="screen active" id="homeScreen">
+<div class="screen" id="homeScreen">
   <div class="topbar-pro">
     <div class="player-pill" id="playerPill">
       <div class="pill-avatar" id="pillAvatar">😎</div>
@@ -389,6 +447,19 @@
     <div class="card-title">📱 ئەپ</div>
     <button class="btn-pro btn-ghost-pro" id="installPWABtn" style="display:none;">📲 دامەزراندن وەک ئەپ</button>
     <p class="card-text" id="pwaInstalledText" style="display:none;">✅ دامەزرێنراوە</p>
+  </div>
+
+  <div class="card-pro" id="accountInfoCard" style="display:none;">
+    <div class="card-title">🔑 ئەکاونت</div>
+    <div class="account-info">
+      <div class="account-avatar" id="accountAvatar">👤</div>
+      <div class="account-details">
+        <div class="account-name" id="accountName">یاریزان</div>
+        <div class="account-email" id="accountEmail"></div>
+        <div class="account-badge" id="accountBadge">میوان</div>
+      </div>
+    </div>
+    <button class="btn-pro btn-ghost-pro" id="logoutBtn" style="margin-top:8px; color:#ff6b6b;">🚪 دەرچوون</button>
   </div>
 
   <div class="card-pro">
