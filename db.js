@@ -45,8 +45,12 @@ async function initDatabase() {
       CREATE TABLE IF NOT EXISTS players (
         id SERIAL PRIMARY KEY,
         session_id VARCHAR(64) UNIQUE NOT NULL,
+        google_id VARCHAR(64) UNIQUE,
+        google_email VARCHAR(255),
+        google_picture TEXT,
+        is_google_user BOOLEAN DEFAULT FALSE,
         name VARCHAR(50) NOT NULL,
-        avatar VARCHAR(10) DEFAULT '😎',
+        avatar VARCHAR(20) DEFAULT '😎',
         level INT DEFAULT 1,
         xp INT DEFAULT 0,
         coins INT DEFAULT 0,
@@ -59,6 +63,17 @@ async function initDatabase() {
         last_seen TIMESTAMP DEFAULT NOW()
       )
     `);
+    
+    // Add columns to existing table if migrating
+    await pool.query(`
+      DO $$ BEGIN
+        ALTER TABLE players ADD COLUMN IF NOT EXISTS google_id VARCHAR(64) UNIQUE;
+        ALTER TABLE players ADD COLUMN IF NOT EXISTS google_email VARCHAR(255);
+        ALTER TABLE players ADD COLUMN IF NOT EXISTS google_picture TEXT;
+        ALTER TABLE players ADD COLUMN IF NOT EXISTS is_google_user BOOLEAN DEFAULT FALSE;
+      EXCEPTION WHEN OTHERS THEN NULL;
+      END $$;
+    `).catch(() => {}); // Ignore errors if columns already exist
 
     // Games history
     await pool.query(`
@@ -257,9 +272,107 @@ async function getTotalStats() {
   }
 }
 
+// ===== GOOGLE OAUTH USER MANAGEMENT =====
+
+// Get or create a Google-authenticated user
+async function getOrCreateGoogleUser(googleData) {
+  if (!isConnected || !pool) return null;
+  
+  const { googleId, email, name, picture } = googleData;
+  
+  try {
+    // Check if user exists by google_id
+    const existing = await pool.query(
+      'SELECT * FROM players WHERE google_id = $1',
+      [googleId]
+    );
+    
+    if (existing.rows.length > 0) {
+      // Update last_seen and refresh google data
+      await pool.query(
+        `UPDATE players SET last_seen = NOW(), 
+         google_email = $1, google_picture = $2 
+         WHERE google_id = $3`,
+        [email, picture, googleId]
+      );
+      return existing.rows[0];
+    }
+    
+    // Create new Google user
+    // Use google_id as session_id for consistency (prefixed)
+    const sessionId = 'g_' + googleId;
+    const cleanName = (name || email.split('@')[0] || 'یاریزان').substring(0, 30);
+    
+    const result = await pool.query(
+      `INSERT INTO players 
+        (session_id, google_id, google_email, google_picture, is_google_user, name, avatar) 
+       VALUES ($1, $2, $3, $4, TRUE, $5, $6) 
+       RETURNING *`,
+      [sessionId, googleId, email, picture, cleanName, '👤']
+    );
+    
+    console.log('🆕 New Google user:', cleanName);
+    return result.rows[0];
+  } catch (err) {
+    console.error('getOrCreateGoogleUser error:', err.message);
+    return null;
+  }
+}
+
+// Get player by session_id (works for both guest and Google users)
+async function getPlayerBySession(sessionId) {
+  if (!isConnected || !pool) return null;
+  
+  try {
+    const result = await pool.query(
+      'SELECT * FROM players WHERE session_id = $1',
+      [sessionId]
+    );
+    return result.rows[0] || null;
+  } catch (err) {
+    return null;
+  }
+}
+
+// Update player profile (name/avatar) - only for guests, Google users use Google data
+async function updatePlayerProfile(sessionId, name, avatar) {
+  if (!isConnected || !pool) return false;
+  
+  try {
+    // Don't allow Google users to change their name (it comes from Google)
+    const player = await pool.query(
+      'SELECT is_google_user FROM players WHERE session_id = $1',
+      [sessionId]
+    );
+    
+    if (player.rows.length === 0) return false;
+    
+    if (player.rows[0].is_google_user) {
+      // Google users can only change avatar
+      await pool.query(
+        'UPDATE players SET avatar = $1 WHERE session_id = $2',
+        [avatar, sessionId]
+      );
+    } else {
+      // Guest users can change both
+      await pool.query(
+        'UPDATE players SET name = $1, avatar = $2 WHERE session_id = $3',
+        [name, avatar, sessionId]
+      );
+    }
+    return true;
+  } catch (err) {
+    console.error('updatePlayerProfile error:', err.message);
+    return false;
+  }
+}
+
 module.exports = {
   isConnected: () => isConnected,
   getOrCreatePlayer,
+  getOrCreateGoogleUser,
+  getPlayerBySession,
+  updatePlayerProfile,
   updatePlayerStats,
   saveGame,
   getLeaderboard,

@@ -2,6 +2,7 @@
 // 🎲 Kurdish Domino - Server
 // Rules: 4-direction first double, multiples of 5,
 //        teams 2v2, end-round counting
+// Auth: Google OAuth + Guest sessions
 // ============================================
 
 const express = require('express');
@@ -9,6 +10,9 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
+const cookieParser = require('cookie-parser');
+const { OAuth2Client } = require('google-auth-library');
 const db = require('./db');
 
 const app = express();
@@ -19,7 +23,145 @@ const io = new Server(server, {
   pingInterval: 25000
 });
 
+// ===== Google OAuth Setup =====
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
+const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(64).toString('hex');
+const APP_URL = process.env.APP_URL || `http://localhost:${process.env.PORT || 3000}`;
+
+const googleClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
+
+if (!GOOGLE_CLIENT_ID) {
+  console.log('⚠️  GOOGLE_CLIENT_ID not set - Google login disabled (guest only)');
+} else {
+  console.log('✅ Google OAuth enabled');
+}
+
+// ===== Middleware =====
+app.use(express.json());
+app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
+
+// ===== API: Auth status =====
+app.get('/api/auth/status', (req, res) => {
+  res.json({
+    googleEnabled: !!GOOGLE_CLIENT_ID,
+    googleClientId: GOOGLE_CLIENT_ID || null
+  });
+});
+
+// ===== API: Google Sign-In =====
+// Frontend sends Google ID token, server verifies and issues JWT
+app.post('/api/auth/google', async (req, res) => {
+  if (!googleClient) {
+    return res.status(400).json({ error: 'Google login not configured' });
+  }
+  
+  const { idToken } = req.body;
+  if (!idToken) {
+    return res.status(400).json({ error: 'Missing idToken' });
+  }
+  
+  try {
+    // Verify the Google ID token
+    const ticket = await googleClient.verifyIdToken({
+      idToken,
+      audience: GOOGLE_CLIENT_ID
+    });
+    
+    const payload = ticket.getPayload();
+    const googleData = {
+      googleId: payload.sub,
+      email: payload.email,
+      name: payload.name,
+      picture: payload.picture
+    };
+    
+    // Get or create user in DB
+    const user = await db.getOrCreateGoogleUser(googleData);
+    
+    if (!user) {
+      // DB not available - return temporary session
+      return res.json({
+        success: true,
+        token: jwt.sign({ 
+          sessionId: 'g_' + googleData.googleId,
+          googleId: googleData.googleId,
+          name: googleData.name,
+          picture: googleData.picture,
+          isGoogleUser: true
+        }, JWT_SECRET, { expiresIn: '30d' }),
+        user: {
+          sessionId: 'g_' + googleData.googleId,
+          name: googleData.name,
+          picture: googleData.picture,
+          email: googleData.email,
+          isGoogleUser: true
+        }
+      });
+    }
+    
+    // Issue JWT
+    const token = jwt.sign({
+      sessionId: user.session_id,
+      googleId: user.google_id,
+      name: user.name,
+      picture: user.google_picture,
+      isGoogleUser: true
+    }, JWT_SECRET, { expiresIn: '30d' });
+    
+    res.cookie('auth_token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 30 * 24 * 60 * 60 * 1000
+    });
+    
+    res.json({
+      success: true,
+      token,
+      user: {
+        sessionId: user.session_id,
+        name: user.name,
+        picture: user.google_picture,
+        email: user.google_email,
+        avatar: user.avatar,
+        level: user.level,
+        xp: user.xp,
+        coins: user.coins,
+        gems: user.gems,
+        isGoogleUser: true,
+        stats: {
+          wins: user.wins,
+          losses: user.losses,
+          games: user.games
+        }
+      }
+    });
+  } catch (err) {
+    console.error('Google auth error:', err.message);
+    res.status(401).json({ error: 'Invalid Google token' });
+  }
+});
+
+// ===== API: Logout =====
+app.post('/api/auth/logout', (req, res) => {
+  res.clearCookie('auth_token');
+  res.json({ success: true });
+});
+
+// ===== API: Verify token =====
+app.get('/api/auth/me', (req, res) => {
+  const token = req.cookies.auth_token || req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Not authenticated' });
+  
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    res.json({ user: decoded });
+  } catch (err) {
+    res.status(401).json({ error: 'Invalid token' });
+  }
+});
 
 app.get('/api/leaderboard', async (req, res) => {
   const board = await db.getLeaderboard(100);
@@ -30,6 +172,16 @@ app.get('/api/stats', async (req, res) => {
   const stats = await db.getTotalStats();
   res.json(stats);
 });
+
+// Helper: verify JWT for socket connections
+function verifyJWT(token) {
+  if (!token) return null;
+  try {
+    return jwt.verify(token, JWT_SECRET);
+  } catch (err) {
+    return null;
+  }
+}
 
 // ===== STATE =====
 const rooms = {};
@@ -1023,10 +1175,26 @@ io.on('connection', (socket) => {
   
   socket.emit('stats', { onlinePlayers: io.sockets.sockets.size, activeRooms: Object.keys(rooms).length });
 
-  socket.on('initSession', async ({ sessionId, playerName, avatar, level }) => {
+  socket.on('initSession', async ({ sessionId, playerName, avatar, level, token }) => {
     if (!checkRateLimit(socket, 'initSession', 10)) return;
-    playerName = sanitizeText(playerName, 20) || 'یاریزان';
-    avatar = sanitizeText(avatar, 4) || '😎';
+    
+    // Try to verify Google JWT first
+    let googleUser = null;
+    if (token) {
+      googleUser = verifyJWT(token);
+      if (googleUser) {
+        // Use Google session ID
+        sessionId = googleUser.sessionId;
+        playerName = googleUser.name;
+        // Avatar from Google takes priority but allows custom
+        if (!avatar || avatar === '👤') {
+          avatar = googleUser.picture ? '🔗' : '👤'; // 🔗 indicates Google picture URL
+        }
+      }
+    }
+    
+    playerName = sanitizeText(playerName, 30) || 'یاریزان';
+    avatar = sanitizeText(avatar, 20) || '😎';
     
     if (sessionId && sessions[sessionId]) {
       if (tryReconnect(socket, sessionId)) return;
@@ -1034,29 +1202,59 @@ io.on('connection', (socket) => {
       sessions[sessionId].playerName = playerName;
       sessions[sessionId].avatar = avatar;
       sessions[sessionId].lastSeen = Date.now();
+      sessions[sessionId].isGoogleUser = !!googleUser;
+      sessions[sessionId].googlePicture = googleUser?.picture;
       socketToSession[socket.id] = sessionId;
-      const dbPlayer = await db.getOrCreatePlayer(sessionId, playerName, avatar);
+      
+      // For Google users, get from DB by session_id
+      const dbPlayer = googleUser 
+        ? await db.getPlayerBySession(sessionId)
+        : await db.getOrCreatePlayer(sessionId, playerName, avatar);
+      
       socket.emit('sessionReady', { 
         sessionId,
+        isGoogleUser: !!googleUser,
+        googlePicture: googleUser?.picture,
+        googleEmail: googleUser?.email,
         dbPlayer: dbPlayer ? {
+          name: dbPlayer.name,
+          avatar: dbPlayer.avatar,
           level: dbPlayer.level, xp: dbPlayer.xp,
           coins: dbPlayer.coins, gems: dbPlayer.gems,
+          isGoogleUser: dbPlayer.is_google_user,
+          googlePicture: dbPlayer.google_picture,
           stats: { wins: dbPlayer.wins, losses: dbPlayer.losses, games: dbPlayer.games }
         } : null
       });
       return;
     }
+    
     const newSessionId = sessionId || genId();
     sessions[newSessionId] = {
-      socketId: socket.id, roomId: null, playerName, avatar, level: level || 1, lastSeen: Date.now()
+      socketId: socket.id, roomId: null, 
+      playerName, avatar, level: level || 1, 
+      lastSeen: Date.now(),
+      isGoogleUser: !!googleUser,
+      googlePicture: googleUser?.picture
     };
     socketToSession[socket.id] = newSessionId;
-    const dbPlayer = await db.getOrCreatePlayer(newSessionId, playerName, avatar);
+    
+    const dbPlayer = googleUser 
+      ? await db.getPlayerBySession(newSessionId)
+      : await db.getOrCreatePlayer(newSessionId, playerName, avatar);
+    
     socket.emit('sessionReady', { 
       sessionId: newSessionId,
+      isGoogleUser: !!googleUser,
+      googlePicture: googleUser?.picture,
+      googleEmail: googleUser?.email,
       dbPlayer: dbPlayer ? {
+        name: dbPlayer.name,
+        avatar: dbPlayer.avatar,
         level: dbPlayer.level, xp: dbPlayer.xp,
         coins: dbPlayer.coins, gems: dbPlayer.gems,
+        isGoogleUser: dbPlayer.is_google_user,
+        googlePicture: dbPlayer.google_picture,
         stats: { wins: dbPlayer.wins, losses: dbPlayer.losses, games: dbPlayer.games }
       } : null
     });
